@@ -270,6 +270,7 @@ const rawMembers: RawMember[] = [
     name: "Anish Rudra",
     university: "The University of Texas at Austin",
     website: "https://github.com/aniXC12",
+    avatar: "/avatars/students/anish-rudra.jpg",
     links: {},
     profile: {
       headline:
