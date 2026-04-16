@@ -106,8 +106,6 @@ export function F1StrategyApp() {
 
   const primaryDriver = getDriver(primaryForm.driverId);
   const secondaryDriver = getDriver(secondaryForm.driverId);
-  const primaryRace = getRace(primaryForm.raceId);
-  const secondaryRace = getRace(secondaryForm.raceId);
   const primaryHistoricalContext = buildHistoricalRaceProfile(
     historicalData,
     primaryForm.raceId,
@@ -411,7 +409,6 @@ export function F1StrategyApp() {
             <StrategyInputPanel
               title="Live race state"
               driver={primaryDriver}
-              race={primaryRace}
               form={primaryForm}
               onChange={setPrimaryForm}
             />
@@ -439,7 +436,6 @@ export function F1StrategyApp() {
                 <StrategyInputPanel
                   title="Driver A race state"
                   driver={primaryDriver}
-                  race={primaryRace}
                   form={primaryForm}
                   onChange={setPrimaryForm}
                 />
@@ -457,7 +453,6 @@ export function F1StrategyApp() {
                 <StrategyInputPanel
                   title="Driver B race state"
                   driver={secondaryDriver}
-                  race={secondaryRace}
                   form={secondaryForm}
                   onChange={setSecondaryForm}
                 />
@@ -528,13 +523,11 @@ export function F1StrategyApp() {
 function StrategyInputPanel({
   title,
   driver,
-  race,
   form,
   onChange,
 }: {
   title: string;
   driver: DriverOption;
-  race: (typeof RACE_OPTIONS_2025)[number];
   form: StrategyFormState;
   onChange: React.Dispatch<React.SetStateAction<StrategyFormState>>;
 }) {
@@ -570,177 +563,210 @@ function StrategyInputPanel({
         </div>
       </div>
 
-      <div className="grid gap-5">
-        <SelectField
-          label="Driver and team"
-          value={form.driverId}
-          onChange={(value) =>
-            onChange((current) => ({
-              ...current,
-              driverId: value,
-            }))
-          }
-          options={DRIVER_OPTIONS.map((option) => ({
-            label: `${option.driver} — ${option.team}`,
-            value: option.id,
-          }))}
-          accent={driver.accent}
-        />
-        <p className="text-sm leading-6 text-white/55">
-          Driver selection updates the panel styling so each comparison side stays
-          visually distinct.
-        </p>
-      </div>
+      <div className="grid gap-4">
+        <StepCard
+          step={1}
+          title="Pick the race"
+          description="Start by choosing the circuit. The app will automatically fill in the race distance."
+        >
+          <SelectField
+            label="2025 race"
+            value={form.raceId}
+            onChange={(value) => {
+              const selectedRace = getRace(value);
+              onChange((current) => {
+                const nextCurrentLap = Math.min(
+                  current.currentLap,
+                  selectedRace.laps - 1,
+                );
 
-      <div className="mt-5 grid gap-5">
-        <SelectField
-          label="2025 race"
-          value={form.raceId}
-          onChange={(value) => {
-            const selectedRace = getRace(value);
-            onChange((current) => {
-              const nextCurrentLap = Math.min(current.currentLap, selectedRace.laps - 1);
+                return {
+                  ...current,
+                  raceId: selectedRace.id,
+                  totalLaps: selectedRace.laps,
+                  currentLap: nextCurrentLap,
+                  tireAge: Math.min(
+                    current.tireAge,
+                    Math.max(nextCurrentLap - 1, 0),
+                  ),
+                };
+              });
+            }}
+            options={RACE_OPTIONS_2025.map((option) => ({
+              label: `R${option.round} — ${option.grandPrix}`,
+              value: option.id,
+            }))}
+            accent={driver.accent}
+          />
+        </StepCard>
 
-              return {
+        <StepCard
+          step={2}
+          title="Pick the driver"
+          description="Choose the driver you want the app to analyze."
+        >
+          <SelectField
+            label="Driver and team"
+            value={form.driverId}
+            onChange={(value) =>
+              onChange((current) => ({
                 ...current,
-                raceId: selectedRace.id,
-                totalLaps: selectedRace.laps,
-                currentLap: nextCurrentLap,
-                tireAge: Math.min(current.tireAge, Math.max(nextCurrentLap - 1, 0)),
-              };
-            });
-          }}
-          options={RACE_OPTIONS_2025.map((option) => ({
-            label: `R${option.round} — ${option.grandPrix}`,
-            value: option.id,
-          }))}
-          accent={driver.accent}
-        />
-        <p className="text-sm leading-6 text-white/55">
-          Official 2025 F1 calendar selection. Choosing a race auto-fills the
-          scheduled lap count for {race.grandPrix}.
-        </p>
-      </div>
+                driverId: value,
+              }))
+            }
+            options={DRIVER_OPTIONS.map((option) => ({
+              label: `${option.driver} — ${option.team}`,
+              value: option.id,
+            }))}
+            accent={driver.accent}
+          />
+        </StepCard>
 
-      <div className="mt-6 grid gap-5 sm:grid-cols-2">
-        <NumberField
-          label="Current lap"
-          value={form.currentLap}
-          min={1}
-          max={form.totalLaps}
-          onChange={(value) =>
-            onChange((current) => ({
-              ...current,
-              currentLap: value,
-              tireAge: Math.min(current.tireAge, value - 1),
-            }))
-          }
-          accent={driver.accent}
-        />
-        <NumberField
-          label="Total laps"
-          value={form.totalLaps}
-          min={2}
-          max={90}
-          onChange={(value) =>
-            onChange((current) => ({
-              ...current,
-              totalLaps: value,
-              currentLap: Math.min(current.currentLap, value - 1),
-            }))
-          }
-          accent={driver.accent}
-        />
-        <NumberField
-          label="Current tire age"
-          value={form.tireAge}
-          min={0}
-          max={Math.max(form.currentLap - 1, 0)}
-          onChange={(value) =>
-            onChange((current) => ({ ...current, tireAge: value }))
-          }
-          accent={driver.accent}
-        />
-        <SelectField
-          label="Weather"
-          value={form.weather}
-          onChange={(value) =>
-            onChange((current) => ({
-              ...current,
-              weather: value as PitStrategyInput["weather"],
-            }))
-          }
-          options={[
-            { label: "Dry", value: "dry" },
-            { label: "Wet", value: "wet" },
-          ]}
-          accent={driver.accent}
-        />
-      </div>
+        <StepCard
+          step={3}
+          title="Describe the tires"
+          description="Tell the app what tires the car is on and how worn they are."
+        >
+          <div className="grid gap-5 sm:grid-cols-2">
+            <NumberField
+              label="Current lap"
+              value={form.currentLap}
+              min={1}
+              max={form.totalLaps}
+              onChange={(value) =>
+                onChange((current) => ({
+                  ...current,
+                  currentLap: value,
+                  tireAge: Math.min(current.tireAge, value - 1),
+                }))
+              }
+              accent={driver.accent}
+            />
+            <NumberField
+              label="Total laps"
+              value={form.totalLaps}
+              min={2}
+              max={90}
+              onChange={(value) =>
+                onChange((current) => ({
+                  ...current,
+                  totalLaps: value,
+                  currentLap: Math.min(current.currentLap, value - 1),
+                }))
+              }
+              accent={driver.accent}
+            />
+            <NumberField
+              label="Current tire age"
+              value={form.tireAge}
+              min={0}
+              max={Math.max(form.currentLap - 1, 0)}
+              onChange={(value) =>
+                onChange((current) => ({ ...current, tireAge: value }))
+              }
+              accent={driver.accent}
+            />
+            <SelectField
+              label="Tire compound"
+              value={form.compound}
+              onChange={(value) =>
+                onChange((current) => ({
+                  ...current,
+                  compound: value as PitStrategyInput["compound"],
+                }))
+              }
+              options={[
+                { label: "Soft", value: "soft" },
+                { label: "Medium", value: "medium" },
+                { label: "Hard", value: "hard" },
+              ]}
+              accent={driver.accent}
+            />
+            <SelectField
+              label="Weather"
+              value={form.weather}
+              onChange={(value) =>
+                onChange((current) => ({
+                  ...current,
+                  weather: value as PitStrategyInput["weather"],
+                }))
+              }
+              options={[
+                { label: "Dry", value: "dry" },
+                { label: "Wet", value: "wet" },
+              ]}
+              accent={driver.accent}
+            />
+          </div>
+        </StepCard>
 
-      <div className="mt-5">
-        <SelectField
-          label="Tire compound"
-          value={form.compound}
-          onChange={(value) =>
-            onChange((current) => ({
-              ...current,
-              compound: value as PitStrategyInput["compound"],
-            }))
-          }
-          options={[
-            { label: "Soft", value: "soft" },
-            { label: "Medium", value: "medium" },
-            { label: "Hard", value: "hard" },
-          ]}
-          accent={driver.accent}
-        />
-      </div>
+        <StepCard
+          step={4}
+          title="Describe the race situation"
+          description="Tell the app if the driver is under pressure or leading comfortably."
+        >
+          <div className="grid gap-5 sm:grid-cols-2">
+            <NumberField
+              label="Gap to car behind (sec)"
+              value={form.gapBehindSeconds}
+              min={0}
+              max={30}
+              step={0.1}
+              onChange={(value) =>
+                onChange((current) => ({
+                  ...current,
+                  gapBehindSeconds: value,
+                }))
+              }
+              accent={driver.accent}
+            />
+            <ToggleField
+              label="Race position"
+              checked={form.isLeading}
+              checkedLabel="Leading the race"
+              uncheckedLabel="Not leading"
+              accent={driver.accent}
+              onChange={(checked) =>
+                onChange((current) => ({
+                  ...current,
+                  isLeading: checked,
+                }))
+              }
+            />
+          </div>
+        </StepCard>
 
-      <div className="mt-5 grid gap-5 sm:grid-cols-2">
-        <NumberField
-          label="Gap to car behind (sec)"
-          value={form.gapBehindSeconds}
-          min={0}
-          max={30}
-          step={0.1}
-          onChange={(value) =>
-            onChange((current) => ({
-              ...current,
-              gapBehindSeconds: value,
-            }))
-          }
-          accent={driver.accent}
-        />
-        <ToggleField
-          label="Race position"
-          checked={form.isLeading}
-          checkedLabel="Leading the race"
-          uncheckedLabel="Not leading"
-          accent={driver.accent}
-          onChange={(checked) =>
-            onChange((current) => ({
-              ...current,
-              isLeading: checked,
-            }))
-          }
-        />
-      </div>
-
-      <div className="mt-5">
-        <ToggleField
-          label="Safety car likelihood"
-          checked={form.safetyCarLikely}
-          checkedLabel="Safety car likely in next 10 laps"
-          uncheckedLabel="Normal green-flag scenario"
-          accent={driver.accent}
-          onChange={(checked) =>
-            onChange((current) => ({
-              ...current,
-              safetyCarLikely: checked,
-            }))
-          }
-        />
+        <div className="rounded-[26px] border border-[#f59e0b]/40 bg-[linear-gradient(180deg,rgba(245,158,11,0.14),rgba(245,158,11,0.06))] p-5 shadow-[0_12px_32px_rgba(245,158,11,0.12)]">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 rounded-full bg-[#f59e0b] px-2 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.28em] text-black">
+              Critical
+            </div>
+            <div>
+              <h3 className="text-[1.15rem] font-semibold tracking-[-0.03em] text-white">
+                Safety car assumption
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-white/72">
+                Turn this on only if you think a safety car is likely soon. It can
+                significantly change the best pit timing because stops become cheaper.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <ToggleField
+              label="Safety car likelihood"
+              checked={form.safetyCarLikely}
+              checkedLabel="Safety car likely in next 10 laps"
+              uncheckedLabel="Normal green-flag scenario"
+              accent="#f59e0b"
+              onChange={(checked) =>
+                onChange((current) => ({
+                  ...current,
+                  safetyCarLikely: checked,
+                }))
+              }
+            />
+          </div>
+        </div>
       </div>
 
       <div className="mt-8 rounded-[28px] border border-white/8 bg-black/28 p-5">
@@ -872,21 +898,22 @@ function ReplayInputPanel({
           type="button"
           onClick={onTogglePlay}
           disabled={!historicalContext}
-          className="min-h-[132px] min-w-[220px] rounded-[28px] border border-[#ff5f56]/50 bg-[linear-gradient(180deg,#ff5f56,#c91f16)] px-6 py-6 text-left shadow-[0_18px_56px_rgba(255,95,86,0.35)] transition disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-[176px] min-w-[320px] rounded-[32px] border border-[#ff5f56]/60 bg-[linear-gradient(180deg,#ff5f56,#c91f16)] px-7 py-7 text-left shadow-[0_22px_64px_rgba(255,95,86,0.42)] transition disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <div className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/80">
-            Playback
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.32em] text-white/82">
+            Replay Control
           </div>
-          <div className="mt-4 flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/25 bg-white/12 text-2xl text-white">
+          <div className="mt-5 flex items-center gap-5">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/25 bg-white/12 text-4xl text-white">
               {isPlaying ? "||" : "▶"}
             </div>
-            <div className="text-[1.5rem] font-semibold tracking-[-0.05em] text-white">
-            {isPlaying ? "Pause" : form.currentLap >= form.totalLaps ? "Replay" : "Play"}
+            <div className="text-[2rem] font-semibold tracking-[-0.05em] text-white">
+              {isPlaying ? "Pause replay" : form.currentLap >= form.totalLaps ? "Play replay again" : "Play race replay"}
             </div>
           </div>
-          <p className="mt-3 text-sm leading-6 text-white/82">
-            Press once to watch the race unfold lap by lap.
+          <p className="mt-4 text-[0.98rem] leading-7 text-white/84">
+            Watch the race unfold lap by lap and compare the app’s strategy call
+            with what the team actually did.
           </p>
         </button>
 
@@ -1168,60 +1195,57 @@ function StrategyOutputPanel({
         </PremiumCard>
       ) : null}
 
-      <PremiumCard title="Historical Calibration">
-        {historicalStatus === "loading" ? (
-          <p className="text-[0.96rem] leading-7 text-white/64">
-            Loading completed 2025 race data from the Ergast-compatible feed.
-          </p>
-        ) : historicalContext ? (
-          <>
-            <h3 className="text-[1.55rem] font-semibold tracking-[-0.04em] text-white">
-              {strategy.historicalAdjustmentTitle ?? "Historical race profile active"}
-            </h3>
-            <p className="mt-4 text-[0.96rem] leading-7 text-white/74">
-              {strategy.historicalAdjustmentBody ??
-                `This strategy is being calibrated using completed 2025 race data for ${historicalContext.raceName}.`}
+      {historicalStatus === "loading" || historicalContext ? (
+        <PremiumCard title="Historical Calibration">
+          {historicalStatus === "loading" ? (
+            <p className="text-[0.96rem] leading-7 text-white/64">
+              Loading completed 2025 race data from the Ergast-compatible feed.
             </p>
-            <div className="mt-5 grid gap-3 xl:grid-cols-3">
-              <InsightCard
-                label="Avg stops"
-                value={historicalContext.avgPitStops.toFixed(1)}
-                detail={historicalContext.strategyTrend}
-                accent={driver.accent}
-              />
-              <InsightCard
-                label="Median first stop"
-                value={
-                  historicalContext.medianFirstPitLap != null
-                    ? `Lap ${historicalContext.medianFirstPitLap}`
-                    : "N/A"
-                }
-                detail={`Winner completed ${historicalContext.winnerLaps ?? "?"} laps`}
-                accent={driver.accent}
-              />
-              <InsightCard
-                label="Driver result"
-                value={
-                  historicalContext.driverFinishPosition != null
-                    ? `P${historicalContext.driverFinishPosition}`
-                    : "No finish data"
-                }
-                detail={
-                  historicalContext.driverPitStops != null
-                    ? `Actual stops: ${historicalContext.driverPitStops}`
-                    : "Driver-specific stop history unavailable"
-                }
-                accent={driver.accent}
-              />
-            </div>
-          </>
-        ) : (
-          <p className="text-[0.96rem] leading-7 text-white/64">
-            Historical calibration is unavailable for this selection right now,
-            so the model is using its generalized tire and race-state heuristics.
-          </p>
-        )}
-      </PremiumCard>
+          ) : historicalContext ? (
+            <>
+              <h3 className="text-[1.55rem] font-semibold tracking-[-0.04em] text-white">
+                {strategy.historicalAdjustmentTitle ?? "Historical race profile active"}
+              </h3>
+              <p className="mt-4 text-[0.96rem] leading-7 text-white/74">
+                {strategy.historicalAdjustmentBody ??
+                  `This strategy is being calibrated using completed 2025 race data for ${historicalContext.raceName}.`}
+              </p>
+              <div className="mt-5 grid gap-3 xl:grid-cols-3">
+                <InsightCard
+                  label="Avg stops"
+                  value={historicalContext.avgPitStops.toFixed(1)}
+                  detail={historicalContext.strategyTrend}
+                  accent={driver.accent}
+                />
+                <InsightCard
+                  label="Median first stop"
+                  value={
+                    historicalContext.medianFirstPitLap != null
+                      ? `Lap ${historicalContext.medianFirstPitLap}`
+                      : "N/A"
+                  }
+                  detail={`Winner completed ${historicalContext.winnerLaps ?? "?"} laps`}
+                  accent={driver.accent}
+                />
+                <InsightCard
+                  label="Driver result"
+                  value={
+                    historicalContext.driverFinishPosition != null
+                      ? `P${historicalContext.driverFinishPosition}`
+                      : "No finish data"
+                  }
+                  detail={
+                    historicalContext.driverPitStops != null
+                      ? `Actual stops: ${historicalContext.driverPitStops}`
+                      : "Driver-specific stop history unavailable"
+                  }
+                  accent={driver.accent}
+                />
+              </div>
+            </>
+          ) : null}
+        </PremiumCard>
+      ) : null}
 
       <div className="grid gap-3 xl:grid-cols-2">
         <InsightCard
@@ -1487,6 +1511,35 @@ function MetricCard({ label, value }: { label: string; value: string }) {
       />
       <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[label]}</p>
     </motion.div>
+  );
+}
+
+function StepCard({
+  step,
+  title,
+  description,
+  children,
+}: {
+  step: number;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[24px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(0,0,0,0.14))] p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/72">
+          Step {step}
+        </div>
+        <div>
+          <h3 className="text-[1.1rem] font-semibold tracking-[-0.03em] text-white">
+            {title}
+          </h3>
+          <p className="mt-1 text-sm leading-6 text-white/58">{description}</p>
+        </div>
+      </div>
+      <div>{children}</div>
+    </div>
   );
 }
 
