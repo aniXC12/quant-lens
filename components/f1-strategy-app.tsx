@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DRIVER_OPTIONS, type DriverOption } from "@/lib/f1-drivers";
+import {
+  buildHistoricalRaceProfile,
+  type HistoricalRaceProfile,
+  type HistoricalSeasonData,
+} from "@/lib/f1-historical";
 import { RACE_OPTIONS_2025 } from "@/lib/f1-races";
 import {
   getPitStopRecommendation,
@@ -15,7 +20,7 @@ type StrategyFormState = PitStrategyInput & {
   raceId: string;
 };
 
-type ViewMode = "single" | "head-to-head";
+type ViewMode = "single" | "head-to-head" | "replay";
 
 const initialRace =
   RACE_OPTIONS_2025.find((race) => race.id === "great-britain") ??
@@ -23,26 +28,72 @@ const initialRace =
 
 const initialForm = createInitialForm("lewis-hamilton", initialRace.id);
 const initialChallengerForm = createInitialForm("max-verstappen", initialRace.id);
+const initialReplayForm = createInitialReplayForm("lewis-hamilton", initialRace.id);
 
 export function F1StrategyApp() {
   const [viewMode, setViewMode] = useState<ViewMode>("single");
   const [primaryForm, setPrimaryForm] = useState<StrategyFormState>(initialForm);
   const [secondaryForm, setSecondaryForm] =
     useState<StrategyFormState>(initialChallengerForm);
+  const [replayForm, setReplayForm] = useState<StrategyFormState>(initialReplayForm);
+  const [historicalData, setHistoricalData] = useState<HistoricalSeasonData | null>(
+    null,
+  );
+  const [historicalStatus, setHistoricalStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState<1 | 2 | 4>(1);
+  const [replayPitEvent, setReplayPitEvent] = useState<{
+    lap: number;
+    matchedRecommendation: boolean;
+  } | null>(null);
 
   const primaryDriver = getDriver(primaryForm.driverId);
   const secondaryDriver = getDriver(secondaryForm.driverId);
   const primaryRace = getRace(primaryForm.raceId);
   const secondaryRace = getRace(secondaryForm.raceId);
-  const primaryStrategy = getPitStopRecommendation(primaryForm);
-  const secondaryStrategy = getPitStopRecommendation(secondaryForm);
+  const primaryHistoricalContext = buildHistoricalRaceProfile(
+    historicalData,
+    primaryForm.raceId,
+    primaryForm.driverId,
+  );
+  const secondaryHistoricalContext = buildHistoricalRaceProfile(
+    historicalData,
+    secondaryForm.raceId,
+    secondaryForm.driverId,
+  );
+  const replayHistoricalContext = buildHistoricalRaceProfile(
+    historicalData,
+    replayForm.raceId,
+    replayForm.driverId,
+  );
+  const primaryStrategy = getPitStopRecommendation({
+    ...primaryForm,
+    historicalContext: primaryHistoricalContext,
+  });
+  const secondaryStrategy = getPitStopRecommendation({
+    ...secondaryForm,
+    historicalContext: secondaryHistoricalContext,
+  });
   const primaryBaselineStrategy = getPitStopRecommendation({
     ...primaryForm,
     safetyCarLikely: false,
+    historicalContext: primaryHistoricalContext,
   });
   const secondaryBaselineStrategy = getPitStopRecommendation({
     ...secondaryForm,
     safetyCarLikely: false,
+    historicalContext: secondaryHistoricalContext,
+  });
+  const replayStrategy = getPitStopRecommendation({
+    ...replayForm,
+    historicalContext: replayHistoricalContext,
+  });
+  const replayBaselineStrategy = getPitStopRecommendation({
+    ...replayForm,
+    safetyCarLikely: false,
+    historicalContext: replayHistoricalContext,
   });
   const shellStyle = {
     "--team-accent": primaryDriver.accent,
@@ -55,6 +106,105 @@ export function F1StrategyApp() {
       : primaryStrategy.bettingValueScore > secondaryStrategy.bettingValueScore
         ? "primary"
         : "secondary";
+
+  const replayDriver = getDriver(replayForm.driverId);
+  const replayRace = getRace(replayForm.raceId);
+  const replayActualPitLaps = useMemo(
+    () => replayHistoricalContext?.driverPitLaps ?? [],
+    [replayHistoricalContext],
+  );
+  const replayUpcomingPitLap =
+    replayActualPitLaps.find((lap) => lap >= replayForm.currentLap) ?? null;
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadHistoricalData() {
+      try {
+        setHistoricalStatus("loading");
+        const response = await fetch("/api/f1/historical?season=2025");
+
+        if (!response.ok) {
+          throw new Error(`Historical API failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as HistoricalSeasonData;
+
+        if (!ignore) {
+          setHistoricalData(payload);
+          setHistoricalStatus("ready");
+        }
+      } catch {
+        if (!ignore) {
+          setHistoricalStatus("error");
+        }
+      }
+    }
+
+    void loadHistoricalData();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      viewMode !== "replay" ||
+      !isReplayPlaying ||
+      historicalStatus !== "ready" ||
+      !replayHistoricalContext?.completed
+    ) {
+      return;
+    }
+
+    if (replayForm.currentLap >= replayForm.totalLaps) {
+      setIsReplayPlaying(false);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      const nextLap = Math.min(replayForm.currentLap + 1, replayForm.totalLaps);
+      const didPit = replayActualPitLaps.includes(nextLap);
+
+      if (didPit) {
+        const windowStart = replayStrategy.windowStart ?? replayForm.totalLaps + 1;
+        const windowEnd = replayStrategy.windowEnd ?? replayForm.totalLaps + 1;
+        const matched =
+          replayStrategy.windowStart != null &&
+          nextLap >= windowStart &&
+          nextLap <= windowEnd;
+
+        setReplayPitEvent({
+          lap: nextLap,
+          matchedRecommendation: matched,
+        });
+      }
+
+      setReplayForm((current) => ({
+        ...current,
+        currentLap: nextLap,
+        tireAge: didPit ? 0 : current.tireAge + 1,
+      }));
+
+      if (nextLap >= replayForm.totalLaps) {
+        setIsReplayPlaying(false);
+      }
+    }, 1200 / replaySpeed);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    historicalStatus,
+    isReplayPlaying,
+    replayActualPitLaps,
+    replayForm,
+    replayHistoricalContext,
+    replaySpeed,
+    replayStrategy,
+    viewMode,
+  ]);
 
   return (
     <main
@@ -100,14 +250,39 @@ export function F1StrategyApp() {
           </div>
 
           <div className="grid w-full max-w-[720px] gap-3 self-start text-sm text-white/72 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="View Mode" value={viewMode === "single" ? "Single" : "Head to head"} />
+            <MetricCard
+              label="View Mode"
+              value={
+                viewMode === "single"
+                  ? "Single"
+                  : viewMode === "head-to-head"
+                    ? "Head to head"
+                    : "Replay"
+              }
+            />
             <MetricCard label="Lead Driver" value={primaryDriver.driver} />
             <MetricCard label="Primary Bet Value" value={`${primaryStrategy.bettingValueScore}/10`} />
+            <MetricCard
+              label="Historical Data"
+              value={
+                historicalStatus === "loading"
+                  ? "Loading"
+                  : historicalStatus === "ready"
+                    ? "Live 2025"
+                    : "Unavailable"
+              }
+            />
             <MetricCard
               label="Comparison Edge"
               value={
                 viewMode === "single"
                   ? primaryStrategy.positionDeltaLabel
+                  : viewMode === "replay"
+                    ? replayPitEvent
+                      ? replayPitEvent.matchedRecommendation
+                        ? "Matched"
+                        : "Diverged"
+                      : "Tracking"
                   : comparisonWinner === null
                     ? "Even"
                     : comparisonWinner === "primary"
@@ -131,6 +306,12 @@ export function F1StrategyApp() {
             description="Two drivers, separate race states, direct comparison."
             onClick={() => setViewMode("head-to-head")}
           />
+          <ModeButton
+            active={viewMode === "replay"}
+            label="Replay Mode"
+            description="Play through a completed 2025 race lap by lap."
+            onClick={() => setViewMode("replay")}
+          />
         </div>
 
         {viewMode === "single" ? (
@@ -147,9 +328,11 @@ export function F1StrategyApp() {
               strategy={primaryStrategy}
               baselineStrategy={primaryBaselineStrategy}
               safetyCarLikely={primaryForm.safetyCarLikely}
+              historicalContext={primaryHistoricalContext}
+              historicalStatus={historicalStatus}
             />
           </div>
-        ) : (
+        ) : viewMode === "head-to-head" ? (
           <div className="flex flex-1 flex-col gap-6">
             <ComparisonSummary
               primaryDriver={primaryDriver}
@@ -173,6 +356,8 @@ export function F1StrategyApp() {
                   strategy={primaryStrategy}
                   baselineStrategy={primaryBaselineStrategy}
                   safetyCarLikely={primaryForm.safetyCarLikely}
+                  historicalContext={primaryHistoricalContext}
+                  historicalStatus={historicalStatus}
                 />
               </div>
 
@@ -189,9 +374,58 @@ export function F1StrategyApp() {
                   strategy={secondaryStrategy}
                   baselineStrategy={secondaryBaselineStrategy}
                   safetyCarLikely={secondaryForm.safetyCarLikely}
+                  historicalContext={secondaryHistoricalContext}
+                  historicalStatus={historicalStatus}
                 />
               </div>
             </div>
+          </div>
+        ) : (
+          <div className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] 2xl:gap-6">
+            <ReplayInputPanel
+              driver={replayDriver}
+              race={replayRace}
+              form={replayForm}
+              onChange={setReplayForm}
+              historicalStatus={historicalStatus}
+              historicalContext={replayHistoricalContext}
+              isPlaying={isReplayPlaying}
+              onTogglePlay={() => {
+                if (replayForm.currentLap >= replayForm.totalLaps) {
+                  setReplayForm((current) => ({
+                    ...current,
+                    currentLap: 1,
+                    tireAge: 0,
+                  }));
+                  setReplayPitEvent(null);
+                }
+
+                setIsReplayPlaying((current) => !current);
+              }}
+              onReset={() => {
+                setReplayForm((current) => ({
+                  ...current,
+                  currentLap: 1,
+                  tireAge: 0,
+                }));
+                setReplayPitEvent(null);
+                setIsReplayPlaying(false);
+              }}
+              replaySpeed={replaySpeed}
+              onSpeedChange={setReplaySpeed}
+              upcomingPitLap={replayUpcomingPitLap}
+            />
+            <ReplayOutputPanel
+              driver={replayDriver}
+              strategy={replayStrategy}
+              baselineStrategy={replayBaselineStrategy}
+              safetyCarLikely={replayForm.safetyCarLikely}
+              historicalContext={replayHistoricalContext}
+              historicalStatus={historicalStatus}
+              currentLap={replayForm.currentLap}
+              actualPitLaps={replayActualPitLaps}
+              pitEvent={replayPitEvent}
+            />
           </div>
         )}
       </section>
@@ -436,16 +670,304 @@ function StrategyInputPanel({
   );
 }
 
-function StrategyOutputPanel({
+function ReplayInputPanel({
+  driver,
+  race,
+  form,
+  onChange,
+  historicalStatus,
+  historicalContext,
+  isPlaying,
+  onTogglePlay,
+  onReset,
+  replaySpeed,
+  onSpeedChange,
+  upcomingPitLap,
+}: {
+  driver: DriverOption;
+  race: (typeof RACE_OPTIONS_2025)[number];
+  form: StrategyFormState;
+  onChange: React.Dispatch<React.SetStateAction<StrategyFormState>>;
+  historicalStatus: "loading" | "ready" | "error";
+  historicalContext: HistoricalRaceProfile | null;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
+  onReset: () => void;
+  replaySpeed: 1 | 2 | 4;
+  onSpeedChange: React.Dispatch<React.SetStateAction<1 | 2 | 4>>;
+  upcomingPitLap: number | null;
+}) {
+  const completedRaceOptions = RACE_OPTIONS_2025;
+
+  return (
+    <motion.section
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.035))] p-5 shadow-[0_22px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-7"
+    >
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <p className="text-[0.64rem] font-semibold uppercase tracking-[0.36em] text-white/38">
+            Replay Mode
+          </p>
+          <h2 className="mt-2 text-[1.7rem] font-semibold tracking-[-0.04em] text-white">
+            Historical race playback
+          </h2>
+        </div>
+        <div
+          className="rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em]"
+          style={{
+            borderColor: `${driver.accent}66`,
+            backgroundColor: driver.accentSoft,
+            color: "color-mix(in srgb, white 28%, black 0%)",
+          }}
+        >
+          {driver.team}
+        </div>
+      </div>
+
+      <div className="grid gap-5">
+        <SelectField
+          label="Driver"
+          value={form.driverId}
+          onChange={(value) => {
+            onChange((current) => ({
+              ...createInitialReplayForm(value, current.raceId),
+            }));
+          }}
+          options={DRIVER_OPTIONS.map((option) => ({
+            label: `${option.driver} — ${option.team}`,
+            value: option.id,
+          }))}
+          accent={driver.accent}
+        />
+        <SelectField
+          label="Completed 2025 race"
+          value={form.raceId}
+          onChange={(value) => {
+            const selectedRace = getRace(value);
+            onChange((current) => ({
+              ...createInitialReplayForm(current.driverId, selectedRace.id),
+            }));
+          }}
+          options={completedRaceOptions.map((option) => ({
+            label: `R${option.round} — ${option.grandPrix}`,
+            value: option.id,
+          }))}
+          accent={driver.accent}
+        />
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_auto_auto] xl:items-end">
+        <div className="rounded-[24px] border border-white/8 bg-black/24 px-4 py-4">
+          <p className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/42">
+            Replay Status
+          </p>
+          <AnimatedMetric
+            value={`Lap ${form.currentLap}/${form.totalLaps}`}
+            className="mt-3 text-[2rem] font-semibold tracking-[-0.05em] text-white"
+          />
+          <p className="mt-2 text-sm leading-6 text-white/58">
+            {historicalStatus === "loading"
+              ? "Loading historical race data"
+              : historicalContext
+                ? `Next real pit: ${upcomingPitLap != null ? `lap ${upcomingPitLap}` : "none"}`
+                : "Historical replay data unavailable for this selection"}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          disabled={!historicalContext}
+          className="rounded-[24px] border border-white/10 bg-white/8 px-5 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <div className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/42">
+            Playback
+          </div>
+          <div className="mt-2 text-[1.2rem] font-semibold tracking-[-0.04em] text-white">
+            {isPlaying ? "Pause" : form.currentLap >= form.totalLaps ? "Replay" : "Play"}
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={onReset}
+          className="rounded-[24px] border border-white/10 bg-black/24 px-5 py-4 text-left transition"
+        >
+          <div className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/42">
+            Controls
+          </div>
+          <div className="mt-2 text-[1.2rem] font-semibold tracking-[-0.04em] text-white">
+            Reset
+          </div>
+        </button>
+      </div>
+
+      <div className="mt-5">
+        <p className="mb-2.5 block text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
+          Speed
+        </p>
+        <div className="flex gap-3">
+          {[1, 2, 4].map((speed) => (
+            <button
+              key={speed}
+              type="button"
+              onClick={() => onSpeedChange(speed as 1 | 2 | 4)}
+              className="rounded-[20px] border px-4 py-3 text-sm font-semibold tracking-[-0.02em] transition"
+              style={{
+                borderColor:
+                  replaySpeed === speed ? `${driver.accent}88` : "rgba(255,255,255,0.1)",
+                backgroundColor:
+                  replaySpeed === speed ? driver.accentSoft : "rgba(255,255,255,0.03)",
+              }}
+            >
+              {speed}x
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+        <InsightCard
+          label="Race"
+          value={race.grandPrix}
+          detail={historicalContext ? historicalContext.strategyTrend : "Awaiting completed-race data"}
+          accent={driver.accent}
+        />
+        <InsightCard
+          label="Actual stop count"
+          value={
+            historicalContext?.driverPitStops != null
+              ? `${historicalContext.driverPitStops}`
+              : "N/A"
+          }
+          detail={
+            historicalContext?.driverPitLaps.length
+              ? `Pit laps: ${historicalContext.driverPitLaps.join(", ")}`
+              : "Pit-stop timeline unavailable"
+          }
+          accent={driver.accent}
+        />
+      </div>
+    </motion.section>
+  );
+}
+
+function ReplayOutputPanel({
   driver,
   strategy,
   baselineStrategy,
   safetyCarLikely,
+  historicalContext,
+  historicalStatus,
+  currentLap,
+  actualPitLaps,
+  pitEvent,
 }: {
   driver: DriverOption;
   strategy: PitStrategyRecommendation;
   baselineStrategy: PitStrategyRecommendation;
   safetyCarLikely: boolean;
+  historicalContext: HistoricalRaceProfile | null;
+  historicalStatus: "loading" | "ready" | "error";
+  currentLap: number;
+  actualPitLaps: number[];
+  pitEvent: { lap: number; matchedRecommendation: boolean } | null;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <StrategyOutputPanel
+        driver={driver}
+        strategy={strategy}
+        baselineStrategy={baselineStrategy}
+        safetyCarLikely={safetyCarLikely}
+        historicalContext={historicalContext}
+        historicalStatus={historicalStatus}
+      />
+
+      <PremiumCard title="Replay Timeline">
+        <div className="flex flex-col gap-4">
+          <div className="rounded-[24px] border border-white/8 bg-black/24 px-4 py-4">
+            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
+              Live replay state
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <AnimatedMetric
+                value={`Lap ${currentLap}`}
+                className="text-[2rem] font-semibold tracking-[-0.05em] text-white"
+              />
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-2 text-sm text-white/64">
+                {actualPitLaps.includes(currentLap)
+                  ? "Actual pit this lap"
+                  : "No actual pit this lap"}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-black/24 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
+                Real pit lap markers
+              </p>
+              <p className="text-sm text-white/52">
+                {actualPitLaps.length > 0 ? actualPitLaps.join(" • ") : "No pit stops recorded"}
+              </p>
+            </div>
+            <div className="relative h-4 overflow-hidden rounded-full bg-white/8">
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))]" />
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,#ffffff,#ff5f56)]"
+                style={{ width: `${Math.min(100, (currentLap / Math.max(currentLap, actualPitLaps[actualPitLaps.length - 1] ?? currentLap)) * 100)}%` }}
+              />
+              {actualPitLaps.map((lap) => (
+                <div
+                  key={lap}
+                  className="absolute inset-y-[-3px] w-[3px] rounded-full bg-[#ff5f56] shadow-[0_0_14px_rgba(255,95,86,0.85)]"
+                  style={{ left: `calc(${(lap / Math.max(currentLap, historicalContext?.winnerLaps ?? currentLap, 1)) * 100}% - 1px)` }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <InsightCard
+            label="Decision match"
+            value={
+              pitEvent
+                ? pitEvent.matchedRecommendation
+                  ? "Matched real pit call"
+                  : "Diverged from real pit call"
+                : "Waiting for pit event"
+            }
+            detail={
+              pitEvent
+                ? `At lap ${pitEvent.lap}, the app ${pitEvent.matchedRecommendation ? "aligned with" : "disagreed with"} the actual team stop.`
+                : "When the driver reaches a real pit stop lap, this will compare the app's recommendation to the historical decision."
+            }
+            accent={driver.accent}
+          />
+        </div>
+      </PremiumCard>
+    </div>
+  );
+}
+
+function StrategyOutputPanel({
+  driver,
+  strategy,
+  baselineStrategy,
+  safetyCarLikely,
+  historicalContext,
+  historicalStatus,
+}: {
+  driver: DriverOption;
+  strategy: PitStrategyRecommendation;
+  baselineStrategy: PitStrategyRecommendation;
+  safetyCarLikely: boolean;
+  historicalContext: HistoricalRaceProfile | null;
+  historicalStatus: "loading" | "ready" | "error";
 }) {
   const hasScenarioChanges =
     safetyCarLikely &&
@@ -532,6 +1054,61 @@ function StrategyOutputPanel({
           </div>
         </PremiumCard>
       ) : null}
+
+      <PremiumCard title="Historical Calibration">
+        {historicalStatus === "loading" ? (
+          <p className="text-[0.96rem] leading-7 text-white/64">
+            Loading completed 2025 race data from the Ergast-compatible feed.
+          </p>
+        ) : historicalContext ? (
+          <>
+            <h3 className="text-[1.55rem] font-semibold tracking-[-0.04em] text-white">
+              {strategy.historicalAdjustmentTitle ?? "Historical race profile active"}
+            </h3>
+            <p className="mt-4 text-[0.96rem] leading-7 text-white/74">
+              {strategy.historicalAdjustmentBody ??
+                `This strategy is being calibrated using completed 2025 race data for ${historicalContext.raceName}.`}
+            </p>
+            <div className="mt-5 grid gap-3 xl:grid-cols-3">
+              <InsightCard
+                label="Avg stops"
+                value={historicalContext.avgPitStops.toFixed(1)}
+                detail={historicalContext.strategyTrend}
+                accent={driver.accent}
+              />
+              <InsightCard
+                label="Median first stop"
+                value={
+                  historicalContext.medianFirstPitLap != null
+                    ? `Lap ${historicalContext.medianFirstPitLap}`
+                    : "N/A"
+                }
+                detail={`Winner completed ${historicalContext.winnerLaps ?? "?"} laps`}
+                accent={driver.accent}
+              />
+              <InsightCard
+                label="Driver result"
+                value={
+                  historicalContext.driverFinishPosition != null
+                    ? `P${historicalContext.driverFinishPosition}`
+                    : "No finish data"
+                }
+                detail={
+                  historicalContext.driverPitStops != null
+                    ? `Actual stops: ${historicalContext.driverPitStops}`
+                    : "Driver-specific stop history unavailable"
+                }
+                accent={driver.accent}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="text-[0.96rem] leading-7 text-white/64">
+            Historical calibration is unavailable for this selection right now,
+            so the model is using its generalized tire and race-state heuristics.
+          </p>
+        )}
+      </PremiumCard>
 
       <div className="grid gap-3 xl:grid-cols-2">
         <InsightCard
@@ -1134,6 +1711,26 @@ function createInitialForm(driverId: string, raceId: string): StrategyFormState 
     tireAge: 14,
     weather: "dry",
     gapBehindSeconds: 1.8,
+    isLeading: false,
+    safetyCarLikely: false,
+  };
+}
+
+function createInitialReplayForm(
+  driverId: string,
+  raceId: string,
+): StrategyFormState {
+  const race = getRace(raceId);
+
+  return {
+    driverId,
+    raceId: race.id,
+    currentLap: 1,
+    totalLaps: race.laps,
+    compound: "medium",
+    tireAge: 0,
+    weather: "dry",
+    gapBehindSeconds: 3,
     isLeading: false,
     safetyCarLikely: false,
   };

@@ -1,3 +1,5 @@
+import type { HistoricalRaceProfile } from "@/lib/f1-historical";
+
 export type TireCompound = "soft" | "medium" | "hard";
 export type WeatherCondition = "dry" | "wet";
 
@@ -10,6 +12,7 @@ export type PitStrategyInput = {
   gapBehindSeconds: number;
   isLeading: boolean;
   safetyCarLikely: boolean;
+  historicalContext?: HistoricalRaceProfile | null;
 };
 
 export type PitStrategyRecommendation = {
@@ -34,6 +37,8 @@ export type PitStrategyRecommendation = {
   bettingValueScore: number;
   bettingValueLabel: string;
   bettingValueReasoning: string;
+  historicalAdjustmentTitle: string | null;
+  historicalAdjustmentBody: string | null;
   urgencyNote: string;
   extentNote: string;
   reasoning: string;
@@ -57,6 +62,7 @@ export function getPitStopRecommendation(
   const gapBehindSeconds = clamp(input.gapBehindSeconds, 0, 30);
   const remainingLaps = totalLaps - currentLap;
   const safetyCarWindow = Math.min(10, remainingLaps);
+  const historicalContext = input.historicalContext ?? null;
   const baseLife = DRY_STINT_LIFE[input.compound];
   const adjustedLife =
     input.weather === "wet" ? Math.round(baseLife * WET_STINT_FACTOR) : baseLife;
@@ -83,6 +89,22 @@ export function getPitStopRecommendation(
     currentLap + earliestOffset(wearState, input.weather),
   );
 
+  const historicalAdjustment = getHistoricalAdjustment({
+    historicalContext,
+    currentLap,
+    earliestLap,
+    latestLap,
+    tireAge,
+  });
+
+  if (historicalAdjustment.adjustedEarliestLap != null) {
+    earliestLap = Math.max(currentLap, historicalAdjustment.adjustedEarliestLap);
+  }
+
+  if (historicalAdjustment.adjustedLatestLap != null) {
+    latestLap = Math.max(earliestLap, historicalAdjustment.adjustedLatestLap);
+  }
+
   if (input.safetyCarLikely && canReachSafetyCar && remainingLaps > safetyCarWindow) {
     const targetLap = Math.min(totalLaps - 1, currentLap + Math.max(1, safetyCarWindow - 1));
     earliestLap = Math.min(latestLap, Math.max(earliestLap, targetLap - 1));
@@ -101,6 +123,7 @@ export function getPitStopRecommendation(
     wearState,
     safetyCarLikely: input.safetyCarLikely,
     canReachSafetyCar,
+    historicalContext,
   });
   const strategyAlert = getStrategyAlert({
     compound: input.compound,
@@ -108,6 +131,7 @@ export function getPitStopRecommendation(
     isLeading: input.isLeading,
     safetyCarLikely: input.safetyCarLikely,
     canReachSafetyCar,
+    historicalContext,
   });
 
   if (canReachFlag && tireLifeUsed < 88 && !input.safetyCarLikely) {
@@ -150,6 +174,8 @@ export function getPitStopRecommendation(
       bettingValueScore: bettingValue.score,
       bettingValueLabel: bettingValue.label,
       bettingValueReasoning: bettingValue.reasoning,
+      historicalAdjustmentTitle: historicalAdjustment.title,
+      historicalAdjustmentBody: historicalAdjustment.body,
       urgencyNote: "Current degradation profile supports a no-stop finish.",
       extentNote: "Manage pace and protect the fronts through the final phase.",
       reasoning: `Your ${input.compound} tires still project enough life to cover the final ${remainingLaps} laps${input.weather === "wet" ? " despite the extra weather volatility" : ""}. Unless track position demands an aggressive undercut, the cleaner call is to stay out and finish.`,
@@ -213,6 +239,8 @@ export function getPitStopRecommendation(
     bettingValueScore: bettingValue.score,
     bettingValueLabel: bettingValue.label,
     bettingValueReasoning: bettingValue.reasoning,
+    historicalAdjustmentTitle: historicalAdjustment.title,
+    historicalAdjustmentBody: historicalAdjustment.body,
     urgencyNote:
       input.safetyCarLikely && canReachSafetyCar
         ? "A likely safety car makes a short extension more valuable than a normal green-flag stop."
@@ -235,6 +263,7 @@ export function getPitStopRecommendation(
       latestLap,
       safetyCarLikely: input.safetyCarLikely,
       canReachSafetyCar,
+      historicalContext,
     }),
     keyFactors: [
       `${capitalize(input.compound)} tires are operating in a ${wearState} degradation phase at ${tireAge} laps old.`,
@@ -261,6 +290,7 @@ function buildReasoning({
   latestLap,
   safetyCarLikely,
   canReachSafetyCar,
+  historicalContext,
 }: {
   compound: TireCompound;
   weather: WeatherCondition;
@@ -271,6 +301,7 @@ function buildReasoning({
   latestLap: number;
   safetyCarLikely: boolean;
   canReachSafetyCar: boolean;
+  historicalContext: HistoricalRaceProfile | null;
 }) {
   const compoundLabel = capitalize(compound);
   const weatherText =
@@ -283,7 +314,12 @@ function buildReasoning({
     ? "You can theoretically reach the end, but the tire delta is likely to erode lap time before then."
     : `You do not have enough projected tire life to cover the final ${remainingLaps} laps without a stop.`;
 
-  return `${compoundLabel} is in a ${wearState} wear phase and ${weatherText}. ${finishText} The best trade-off is to target laps ${earliestLap} to ${latestLap}, balancing pit-loss timing against the risk of the stint dropping off abruptly.`;
+  const historyText =
+    historicalContext?.completed && historicalContext.medianFirstPitLap != null
+      ? ` Historical 2025 race data at ${historicalContext.raceName} points to a median first stop around lap ${historicalContext.medianFirstPitLap}, which is being used to calibrate the window.`
+      : "";
+
+  return `${compoundLabel} is in a ${wearState} wear phase and ${weatherText}. ${finishText} The best trade-off is to target laps ${earliestLap} to ${latestLap}, balancing pit-loss timing against the risk of the stint dropping off abruptly.${historyText}`;
 }
 
 function pressureByCompound(compound: TireCompound) {
@@ -353,6 +389,7 @@ function getBettingView({
   wearState,
   safetyCarLikely,
   canReachSafetyCar,
+  historicalContext,
 }: {
   currentLap: number;
   totalLaps: number;
@@ -365,6 +402,7 @@ function getBettingView({
   wearState: "stable" | "managed" | "critical";
   safetyCarLikely: boolean;
   canReachSafetyCar: boolean;
+  historicalContext: HistoricalRaceProfile | null;
 }) {
   const raceProgress = currentLap / totalLaps;
   const tightWindow = latestLap - earliestLap <= 2;
@@ -389,6 +427,14 @@ function getBettingView({
   }
 
   if (remainingLaps <= 8 && canReachFlag) {
+    positionDelta += 1;
+  }
+
+  if (
+    historicalContext?.completed &&
+    historicalContext.driverFinishPosition != null &&
+    historicalContext.driverFinishPosition <= 3
+  ) {
     positionDelta += 1;
   }
 
@@ -441,17 +487,32 @@ function getStrategyAlert({
   isLeading,
   safetyCarLikely,
   canReachSafetyCar,
+  historicalContext,
 }: {
   compound: TireCompound;
   gapBehindSeconds: number;
   isLeading: boolean;
   safetyCarLikely: boolean;
   canReachSafetyCar: boolean;
+  historicalContext: HistoricalRaceProfile | null;
 }) {
   if (safetyCarLikely && canReachSafetyCar) {
     return {
       title: "Safety car opportunity",
       body: "A likely safety car in the next 10 laps would make the stop cheaper, so stretching toward that window becomes the preferred strategic play.",
+      level: "medium" as const,
+    };
+  }
+
+  if (
+    historicalContext?.completed &&
+    historicalContext.avgPitStops >= 2 &&
+    historicalContext.medianFirstPitLap != null &&
+    gapBehindSeconds <= 3
+  ) {
+    return {
+      title: "Historical undercut pressure",
+      body: `Completed 2025 data for ${historicalContext.raceName} shows a multi-stop race with an early median first stop around lap ${historicalContext.medianFirstPitLap}, so track position can flip quickly here.`,
       level: "medium" as const,
     };
   }
@@ -534,6 +595,54 @@ function getBettingValue({
     score,
     label,
     reasoning,
+  };
+}
+
+function getHistoricalAdjustment({
+  historicalContext,
+  currentLap,
+  earliestLap,
+  latestLap,
+  tireAge,
+}: {
+  historicalContext: HistoricalRaceProfile | null;
+  currentLap: number;
+  earliestLap: number;
+  latestLap: number;
+  tireAge: number;
+}) {
+  if (!historicalContext?.completed || historicalContext.medianFirstPitLap == null) {
+    return {
+      adjustedEarliestLap: null,
+      adjustedLatestLap: null,
+      title: null,
+      body: null,
+    };
+  }
+
+  const targetLap = historicalContext.medianFirstPitLap;
+
+  if (Math.abs(targetLap - currentLap) > 18) {
+    return {
+      adjustedEarliestLap: null,
+      adjustedLatestLap: null,
+      title: "Historical race profile loaded",
+      body: `${historicalContext.raceName} completed with a ${historicalContext.strategyTrend.toLowerCase()} and an average of ${historicalContext.avgPitStops.toFixed(1)} stops per driver.`,
+    };
+  }
+
+  const adjustedEarliestLap = Math.round((earliestLap * 2 + targetLap) / 3);
+  const adjustedLatestLap = Math.round((latestLap + targetLap) / 2);
+  const driverText =
+    historicalContext.driverPitStops != null
+      ? ` This selected driver actually stopped ${historicalContext.driverPitStops} time(s) there.`
+      : "";
+
+  return {
+    adjustedEarliestLap: Math.max(currentLap, adjustedEarliestLap),
+    adjustedLatestLap: Math.max(currentLap, adjustedLatestLap),
+    title: "Historical calibration active",
+    body: `${historicalContext.raceName} saw a median first stop around lap ${targetLap}, so the pit window has been nudged toward that real race pattern.${driverText} Current tire age is ${tireAge} laps.`,
   };
 }
 
