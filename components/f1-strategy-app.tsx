@@ -22,6 +22,61 @@ type StrategyFormState = PitStrategyInput & {
 
 type ViewMode = "single" | "head-to-head" | "replay";
 
+const FIELD_HELP: Record<string, string> = {
+  "View Mode": "This changes how you use the app: one driver, two drivers, or a race replay.",
+  "Lead Driver": "This is the main driver currently being highlighted in the app.",
+  "Primary Bet Value": "This is the app's overall rating for whether a live top-3 bet looks attractive.",
+  "Historical Data": "This shows whether the app is using real completed 2025 race data behind the scenes.",
+  "Comparison Edge": "This tells you which driver currently looks stronger according to the model.",
+  "Driver and team": "Pick the driver you want the app to analyze.",
+  Driver: "Pick the driver whose race you want to replay.",
+  "Completed 2025 race": "Choose a race that already happened so the replay can use real historical data.",
+  "2025 race": "Choose the circuit you want to model. The lap count updates automatically.",
+  "Current lap": "This is the lap the car is on right now.",
+  "Total laps": "This is the full race distance at this circuit.",
+  "Current tire age": "This is how many laps the current tires have already completed.",
+  Weather: "Tell the app whether the track is dry or wet because that changes tire life.",
+  "Tire compound": "This is the tire type on the car. Softer tires are faster but usually wear out sooner.",
+  "Gap to car behind (sec)": "This is how close the next car behind is. Small gaps increase pressure to pit.",
+  "Race position": "Tell the app whether this driver is leading, because leaders can extend longer.",
+  "Safety car likelihood": "Turn this on if you think a safety car is likely soon, which can make a pit stop cheaper.",
+  Inputs: "This section is where you describe the race situation in simple terms.",
+  "Live race state": "Fill in the current race conditions and the app will calculate a recommendation.",
+  "Historical race playback": "This lets you step through a real 2025 race and watch the advice update lap by lap.",
+  "Recommended call": "This is the most important output: the app's current pit strategy recommendation.",
+  "Model confidence": "This is how strongly the app believes in the current recommendation.",
+  "Safety Car Scenario": "This compares the normal strategy with a scenario where a safety car is likely soon.",
+  "Window Start": "This is the earliest lap where pitting starts to make sense.",
+  "Window End": "This is the latest lap where the current strategy still looks strong.",
+  "Risk Alert": "This warns you about threats or opportunities that could change the strategy quickly.",
+  "Betting Implications": "This shows how the strategy might affect finishing position and live betting value.",
+  "Finish odds": "This estimates how the strategy affects the driver's chance of finishing strongly.",
+  "Strategy impact": "This explains in plain English how the recommendation could change race position.",
+  "Live bet value": "This is the app's summary score for whether now looks like a good betting moment.",
+  "Strategic Notes": "These are the main reasons the model is making this recommendation.",
+  "Historical Calibration": "This shows how the app is using real 2025 race data to ground the prediction.",
+  "Replay Timeline": "This lets you compare the live recommendation with what actually happened in the race.",
+  "Replay Status": "This shows where you are in the replay right now.",
+  Playback: "Use this to start or pause the lap-by-lap replay.",
+  Controls: "Use this to reset the replay back to the beginning.",
+  Speed: "This controls how quickly the replay moves through the laps.",
+  Race: "This shows the race the replay or analysis is based on.",
+  "Actual stop count": "This is how many times the selected driver really pitted in that race.",
+  "Decision match": "This shows whether the app agreed with the real pit call when the stop happened.",
+  "Head To Head": "This section compares two drivers side by side so you can quickly see who looks stronger.",
+};
+
+const FIELD_TOOLTIP: Record<string, string> = {
+  "Tire compound":
+    "Soft tires are faster but wear out sooner. Hard tires are slower but usually last longer.",
+  "Undercut threat":
+    "An undercut is when a car pits earlier, gets fresh tires, and jumps ahead when others stop later.",
+  "Overcut opportunity":
+    "An overcut is when a car stays out longer and gains time while rivals are in the pits or in traffic.",
+  "Bet value":
+    "This is a simple 1-10 score for how attractive a top-3 live bet looks right now.",
+};
+
 const initialRace =
   RACE_OPTIONS_2025.find((race) => race.id === "great-britain") ??
   RACE_OPTIONS_2025[0];
@@ -31,7 +86,7 @@ const initialChallengerForm = createInitialForm("max-verstappen", initialRace.id
 const initialReplayForm = createInitialReplayForm("lewis-hamilton", initialRace.id);
 
 export function F1StrategyApp() {
-  const [viewMode, setViewMode] = useState<ViewMode>("single");
+  const [viewMode, setViewMode] = useState<ViewMode>("replay");
   const [primaryForm, setPrimaryForm] = useState<StrategyFormState>(initialForm);
   const [secondaryForm, setSecondaryForm] =
     useState<StrategyFormState>(initialChallengerForm);
@@ -239,13 +294,17 @@ export function F1StrategyApp() {
               />
               Race Strategy Console
             </p>
-            <h1 className="max-w-4xl text-[3.1rem] font-semibold leading-[0.96] tracking-[-0.06em] text-white sm:text-[4.2rem]">
-              Predict pit strategy and compare two drivers head to head.
+            <h1 className="max-w-4xl text-[3rem] font-semibold leading-[0.96] tracking-[-0.06em] text-white sm:text-[4rem]">
+              See when an F1 driver should pit, and whether that helps a top-3 bet.
             </h1>
-            <p className="mt-5 max-w-3xl text-[0.98rem] leading-7 text-white/64 sm:text-[1.05rem]">
-              Run a single-driver strategy read or switch into comparison mode to
-              stack two drivers side by side and see who has the stronger
-              strategic and betting position.
+            <p className="mt-4 max-w-3xl text-[1rem] leading-7 text-white/72 sm:text-[1.08rem]">
+              Pick a race, driver, and simple race situation. The app tells you
+              the best pit window, the risk around that decision, and whether the
+              setup looks good for a live top-3 bet.
+            </p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/52">
+              New here? Start with Replay Mode to watch a real 2025 race unfold
+              lap by lap.
             </p>
           </div>
 
@@ -292,6 +351,39 @@ export function F1StrategyApp() {
             />
           </div>
         </header>
+
+        <section className="mb-6 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/42">
+                How To Use It
+              </p>
+              <h2 className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-white">
+                Start with replay, then compare or customize.
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-white/60">
+                Replay Mode shows a real race and is the fastest way to understand
+                what the app does. Single Driver is best for a quick answer.
+                Head to Head is best when you want to compare two possible bets.
+              </p>
+            </div>
+            {viewMode === "replay" ? (
+              <motion.button
+                whileTap={{ scale: 0.985 }}
+                type="button"
+                onClick={() => setViewMode("replay")}
+                className="rounded-[24px] border border-[#ff5f56]/50 bg-[linear-gradient(180deg,#ff5f56,#c91f16)] px-6 py-5 text-left shadow-[0_14px_48px_rgba(255,95,86,0.35)]"
+              >
+                <div className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/80">
+                  Hero Feature
+                </div>
+                <div className="mt-2 text-[1.35rem] font-semibold tracking-[-0.04em] text-white">
+                  Replay a real 2025 race
+                </div>
+              </motion.button>
+            ) : null}
+          </div>
+        </section>
 
         <div className="mb-6 flex flex-wrap gap-3">
           <ModeButton
@@ -762,9 +854,7 @@ function ReplayInputPanel({
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_auto_auto] xl:items-end">
         <div className="rounded-[24px] border border-white/8 bg-black/24 px-4 py-4">
-          <p className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/42">
-            Replay Status
-          </p>
+          <LabelHeading label="Replay Status" />
           <AnimatedMetric
             value={`Lap ${form.currentLap}/${form.totalLaps}`}
             className="mt-3 text-[2rem] font-semibold tracking-[-0.05em] text-white"
@@ -782,14 +872,22 @@ function ReplayInputPanel({
           type="button"
           onClick={onTogglePlay}
           disabled={!historicalContext}
-          className="rounded-[24px] border border-white/10 bg-white/8 px-5 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-[132px] min-w-[220px] rounded-[28px] border border-[#ff5f56]/50 bg-[linear-gradient(180deg,#ff5f56,#c91f16)] px-6 py-6 text-left shadow-[0_18px_56px_rgba(255,95,86,0.35)] transition disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <div className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/42">
+          <div className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/80">
             Playback
           </div>
-          <div className="mt-2 text-[1.2rem] font-semibold tracking-[-0.04em] text-white">
+          <div className="mt-4 flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/25 bg-white/12 text-2xl text-white">
+              {isPlaying ? "||" : "▶"}
+            </div>
+            <div className="text-[1.5rem] font-semibold tracking-[-0.05em] text-white">
             {isPlaying ? "Pause" : form.currentLap >= form.totalLaps ? "Replay" : "Play"}
+            </div>
           </div>
+          <p className="mt-3 text-sm leading-6 text-white/82">
+            Press once to watch the race unfold lap by lap.
+          </p>
         </button>
 
         <button
@@ -797,12 +895,13 @@ function ReplayInputPanel({
           onClick={onReset}
           className="rounded-[24px] border border-white/10 bg-black/24 px-5 py-4 text-left transition"
         >
-          <div className="text-[0.64rem] font-semibold uppercase tracking-[0.28em] text-white/42">
-            Controls
-          </div>
+          <LabelHeading label="Controls" />
           <div className="mt-2 text-[1.2rem] font-semibold tracking-[-0.04em] text-white">
             Reset
           </div>
+          <p className="mt-2 text-sm leading-6 text-white/58">
+            Jump back to lap 1 and restart the race story.
+          </p>
         </button>
       </div>
 
@@ -992,11 +1091,9 @@ function StrategyOutputPanel({
           boxShadow: `0 24px 80px ${driver.accent}24`,
         }}
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px] xl:items-start">
           <div>
-            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.38em] text-white/46">
-              Recommended call
-            </p>
+            <LabelHeading label="Recommended call" />
             <AnimatePresence mode="wait">
               <motion.h2
                 key={strategy.windowLabel}
@@ -1004,20 +1101,36 @@ function StrategyOutputPanel({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.22 }}
-                className="mt-3 text-[2rem] font-semibold tracking-[-0.05em] text-white sm:text-[2.45rem]"
+                className="mt-3 text-[2.1rem] font-semibold tracking-[-0.06em] text-white sm:text-[2.8rem]"
               >
-              {strategy.windowLabel}
+                {strategy.windowLabel}
               </motion.h2>
             </AnimatePresence>
-          </div>
-          <div className="min-w-[160px] rounded-[22px] border border-white/10 bg-black/30 px-4 py-3 text-right">
-            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.24em] text-white/46">
-              Model confidence
+            <p className="mt-3 text-base leading-7 text-white/84">
+              This is the app’s plain-English answer for what the team should do next.
             </p>
-            <AnimatedMetric
-              value={`${strategy.confidenceScore}%`}
-              className="mt-2 text-[2rem] font-semibold tracking-[-0.05em] text-white"
-            />
+          </div>
+          <div className="grid gap-3">
+            <div className="rounded-[22px] border border-white/10 bg-black/30 px-4 py-4">
+              <LabelHeading label="Live bet value" />
+              <AnimatedMetric
+                value={`${strategy.bettingValueScore}/10`}
+                className="mt-2 text-[2.2rem] font-semibold tracking-[-0.06em] text-white"
+              />
+              <p className="mt-2 text-sm leading-6 text-white/58">
+                A simple score for whether this looks like a strong top-3 live bet right now.
+              </p>
+            </div>
+            <div className="rounded-[22px] border border-white/10 bg-black/30 px-4 py-4">
+              <LabelHeading label="Model confidence" />
+              <AnimatedMetric
+                value={`${strategy.confidenceScore}%`}
+                className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-white"
+              />
+              <p className="mt-2 text-sm leading-6 text-white/58">
+                How strongly the app believes in this recommendation.
+              </p>
+            </div>
           </div>
         </div>
         <p className="mt-4 max-w-2xl text-[0.98rem] leading-7 text-white/74">
@@ -1367,13 +1480,12 @@ function MetricCard({ label, value }: { label: string; value: string }) {
       layout
       className="rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.2))] px-4 py-4"
     >
-      <div className="text-[0.64rem] font-semibold uppercase tracking-[0.24em] text-white/42">
-        {label}
-      </div>
+      <LabelHeading label={label} />
       <AnimatedMetric
         value={value}
         className="mt-2 text-[1.15rem] font-semibold tracking-[-0.04em] text-white"
       />
+      <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[label]}</p>
     </motion.div>
   );
 }
@@ -1395,9 +1507,7 @@ function InsightCard({
       className="rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.18))] p-5"
       style={{ borderColor: `${accent}33` }}
     >
-      <p className="text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
-        {label}
-      </p>
+      <LabelHeading label={label} />
       <AnimatedMetric
         value={value}
         className="mt-3 text-[1.65rem] font-semibold tracking-[-0.05em] text-white"
@@ -1426,9 +1536,7 @@ function NumberField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2.5 block text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
-        {label}
-      </span>
+      <LabelHeading label={label} className="mb-2.5" />
       <input
         className="w-full rounded-[22px] border border-white/10 bg-black/28 px-4 py-3.5 text-[1rem] text-white outline-none transition focus:bg-black/34"
         style={{ boxShadow: "none" }}
@@ -1445,6 +1553,7 @@ function NumberField({
           event.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
         }}
       />
+      <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[label]}</p>
     </label>
   );
 }
@@ -1466,9 +1575,7 @@ function ToggleField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2.5 block text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
-        {label}
-      </span>
+      <LabelHeading label={label} className="mb-2.5" />
       <button
         className="flex w-full items-center justify-between rounded-[22px] border border-white/10 bg-black/28 px-4 py-3.5 text-left text-[1rem] text-white transition"
         type="button"
@@ -1487,6 +1594,7 @@ function ToggleField({
           />
         </span>
       </button>
+      <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[label]}</p>
     </label>
   );
 }
@@ -1506,9 +1614,7 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2.5 block text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
-        {label}
-      </span>
+      <LabelHeading label={label} className="mb-2.5" />
       <select
         className="w-full appearance-none rounded-[22px] border border-white/10 bg-black/28 px-4 py-3.5 text-[1rem] text-white outline-none transition focus:bg-black/34"
         value={value}
@@ -1526,6 +1632,7 @@ function SelectField({
           </option>
         ))}
       </select>
+      <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[label]}</p>
     </label>
   );
 }
@@ -1636,11 +1743,44 @@ function PremiumCard({
       className="rounded-[30px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.03))] p-5 backdrop-blur-xl sm:p-7"
       style={{ borderColor: borderColor ?? "rgba(255,255,255,0.1)" }}
     >
-      <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/42">
-        {title}
-      </p>
+      <LabelHeading label={title} />
+      {FIELD_HELP[title] ? (
+        <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[title]}</p>
+      ) : null}
       <div className="mt-3">{children}</div>
     </motion.div>
+  );
+}
+
+function LabelHeading({
+  label,
+  className,
+}: {
+  label: string;
+  className?: string;
+}) {
+  const tooltip = FIELD_TOOLTIP[label];
+
+  return (
+    <div className={className}>
+      <div className="flex items-center gap-2">
+        <p className="text-[0.64rem] font-semibold uppercase tracking-[0.26em] text-white/42">
+          {label}
+        </p>
+        {tooltip ? <HelpTip text={tooltip} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function HelpTip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-white/12 text-[0.7rem] text-white/52">
+      ?
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-56 -translate-x-1/2 rounded-xl border border-white/10 bg-[#101217] px-3 py-2 text-xs leading-5 text-white/78 shadow-[0_16px_40px_rgba(0,0,0,0.35)] group-hover:block">
+        {text}
+      </span>
+    </span>
   );
 }
 
