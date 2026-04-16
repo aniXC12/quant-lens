@@ -572,12 +572,12 @@ function StrategyInputPanel({
           <SelectField
             label="2025 race"
             value={form.raceId}
-            onChange={(value) => {
+              onChange={(value) => {
               const selectedRace = getRace(value);
               onChange((current) => {
                 const nextCurrentLap = Math.min(
                   current.currentLap,
-                  selectedRace.laps - 1,
+                  selectedRace.laps,
                 );
 
                 return {
@@ -585,9 +585,9 @@ function StrategyInputPanel({
                   raceId: selectedRace.id,
                   totalLaps: selectedRace.laps,
                   currentLap: nextCurrentLap,
-                  tireAge: Math.min(
-                    current.tireAge,
-                    Math.max(nextCurrentLap - 1, 0),
+                  tireAge: Math.max(
+                    1,
+                    Math.min(current.tireAge, Math.max(nextCurrentLap - 1, 1)),
                   ),
                 };
               });
@@ -628,41 +628,44 @@ function StrategyInputPanel({
           description="Tell the app what tires the car is on and how worn they are."
         >
           <div className="grid gap-5 sm:grid-cols-2">
-            <NumberField
+            <SliderField
               label="Current lap"
               value={form.currentLap}
               min={1}
-              max={form.totalLaps}
+              max={Math.max(70, form.totalLaps)}
               onChange={(value) =>
                 onChange((current) => ({
                   ...current,
                   currentLap: value,
-                  tireAge: Math.min(current.tireAge, value - 1),
+                  tireAge: Math.max(1, Math.min(current.tireAge, value - 1)),
                 }))
               }
               accent={driver.accent}
             />
-            <NumberField
+            <SliderField
               label="Total laps"
               value={form.totalLaps}
-              min={2}
-              max={90}
+              min={1}
+              max={Math.max(70, getRace(form.raceId).laps, form.totalLaps)}
               onChange={(value) =>
                 onChange((current) => ({
                   ...current,
                   totalLaps: value,
-                  currentLap: Math.min(current.currentLap, value - 1),
+                  currentLap: Math.min(current.currentLap, value),
                 }))
               }
               accent={driver.accent}
             />
-            <NumberField
+            <SliderField
               label="Current tire age"
               value={form.tireAge}
-              min={0}
-              max={Math.max(form.currentLap - 1, 0)}
+              min={1}
+              max={50}
               onChange={(value) =>
-                onChange((current) => ({ ...current, tireAge: value }))
+                onChange((current) => ({
+                  ...current,
+                  tireAge: Math.min(value, 50),
+                }))
               }
               accent={driver.accent}
             />
@@ -706,12 +709,13 @@ function StrategyInputPanel({
           description="Tell the app if the driver is under pressure or leading comfortably."
         >
           <div className="grid gap-5 sm:grid-cols-2">
-            <NumberField
+            <SliderField
               label="Gap to car behind (sec)"
               value={form.gapBehindSeconds}
               min={0}
-              max={30}
+              max={10}
               step={0.1}
+              formatValue={(value) => value.toFixed(1)}
               onChange={(value) =>
                 onChange((current) => ({
                   ...current,
@@ -1570,7 +1574,7 @@ function InsightCard({
   );
 }
 
-function NumberField({
+function SliderField({
   label,
   value,
   min,
@@ -1578,6 +1582,7 @@ function NumberField({
   step,
   onChange,
   accent,
+  formatValue,
 }: {
   label: string;
   value: number;
@@ -1586,26 +1591,40 @@ function NumberField({
   step?: number;
   onChange: (value: number) => void;
   accent: string;
+  formatValue?: (value: number) => string;
 }) {
+  const normalizedValue = Math.min(Math.max(value, min), max);
+  const percentage =
+    max === min ? 0 : ((normalizedValue - min) / (max - min)) * 100;
+
   return (
     <label className="block">
-      <LabelHeading label={label} className="mb-2.5" />
+      <LabelHeading label={label} className="mb-3" />
+      <div className="mb-4 rounded-[22px] border border-white/10 bg-black/26 px-4 py-4">
+        <AnimatedMetric
+          value={formatValue ? formatValue(normalizedValue) : String(normalizedValue)}
+          className="text-[2.1rem] font-semibold tracking-[-0.06em] text-white"
+        />
+        <p className="mt-1 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-white/40">
+          Current value
+        </p>
+      </div>
       <input
-        className="w-full rounded-[22px] border border-white/10 bg-black/28 px-4 py-3.5 text-[1rem] text-white outline-none transition focus:bg-black/34"
-        style={{ boxShadow: "none" }}
-        type="number"
-        value={value}
+        className="h-2.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none transition [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_0_0_6px_rgba(255,255,255,0.08)] [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_0_6px_rgba(255,255,255,0.08)]"
+        style={{
+          background: `linear-gradient(90deg, ${accent} 0%, ${accent} ${percentage}%, rgba(255,255,255,0.1) ${percentage}%, rgba(255,255,255,0.1) 100%)`,
+        }}
+        type="range"
+        value={normalizedValue}
         min={min}
         max={max}
         step={step}
         onChange={(event) => onChange(Number(event.target.value))}
-        onFocus={(event) => {
-          event.currentTarget.style.borderColor = accent;
-        }}
-        onBlur={(event) => {
-          event.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
-        }}
       />
+      <div className="mt-2 flex items-center justify-between text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-white/34">
+        <span>{formatValue ? formatValue(min) : min}</span>
+        <span>{formatValue ? formatValue(max) : max}</span>
+      </div>
       <p className="mt-2 text-sm leading-6 text-white/54">{FIELD_HELP[label]}</p>
     </label>
   );
