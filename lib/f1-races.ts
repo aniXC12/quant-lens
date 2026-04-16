@@ -32,3 +32,7 @@ export const RACE_OPTIONS_2025: RaceOption[] = [
   { id: "qatar", round: 23, country: "Qatar", grandPrix: "Qatar Grand Prix", laps: 57 },
   { id: "abu-dhabi", round: 24, country: "Abu Dhabi", grandPrix: "Abu Dhabi Grand Prix", laps: 58 },
 ];
+
+export function getRace(raceId: string) {
+  return RACE_OPTIONS_2025.find((race) => race.id === raceId) ?? RACE_OPTIONS_2025[0];
+}

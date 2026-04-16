@@ -8,7 +8,8 @@ import {
   type HistoricalRaceProfile,
   type HistoricalSeasonData,
 } from "@/lib/f1-historical";
-import { RACE_OPTIONS_2025 } from "@/lib/f1-races";
+import { getRace, RACE_OPTIONS_2025 } from "@/lib/f1-races";
+import { buildRacePredictorLeaderboard } from "@/lib/f1-race-predictor";
 import {
   getPitStopRecommendation,
   type PitStrategyInput,
@@ -20,7 +21,14 @@ type StrategyFormState = PitStrategyInput & {
   raceId: string;
 };
 
-type ViewMode = "single" | "head-to-head" | "replay";
+type PredictorFormState = {
+  raceId: string;
+  currentLap: number;
+  weather: PitStrategyInput["weather"];
+  safetyCarLikely: boolean;
+};
+
+type ViewMode = "single" | "head-to-head" | "replay" | "predictor";
 
 const FIELD_HELP: Record<string, string> = {
   "View Mode": "This changes how you use the app: one driver, two drivers, or a race replay.",
@@ -64,6 +72,11 @@ const FIELD_HELP: Record<string, string> = {
   "Actual stop count": "This is how many times the selected driver really pitted in that race.",
   "Decision match": "This shows whether the app agreed with the real pit call when the stop happened.",
   "Head To Head": "This section compares two drivers side by side so you can quickly see who looks stronger.",
+  "Race Predictor": "This live board ranks the whole field by current top-3 potential.",
+  "Predictor race": "Choose the race whose circuit profile you want to use for the leaderboard.",
+  "Predictor lap": "Move the race snapshot forward to see how the ranking changes lap by lap.",
+  "Predictor weather": "This changes tire life and strategy risk for every driver in the board.",
+  "Predictor safety car": "Turn this on to see how a likely safety car changes the top-3 order.",
 };
 
 const FIELD_TOOLTIP: Record<string, string> = {
@@ -84,6 +97,12 @@ const initialRace =
 const initialForm = createInitialForm("lewis-hamilton", initialRace.id);
 const initialChallengerForm = createInitialForm("max-verstappen", initialRace.id);
 const initialReplayForm = createInitialReplayForm("lewis-hamilton", initialRace.id);
+const initialPredictorForm: PredictorFormState = {
+  raceId: initialRace.id,
+  currentLap: 24,
+  weather: "dry",
+  safetyCarLikely: false,
+};
 
 export function F1StrategyApp() {
   const [viewMode, setViewMode] = useState<ViewMode>("replay");
@@ -91,6 +110,8 @@ export function F1StrategyApp() {
   const [secondaryForm, setSecondaryForm] =
     useState<StrategyFormState>(initialChallengerForm);
   const [replayForm, setReplayForm] = useState<StrategyFormState>(initialReplayForm);
+  const [predictorForm, setPredictorForm] =
+    useState<PredictorFormState>(initialPredictorForm);
   const [historicalData, setHistoricalData] = useState<HistoricalSeasonData | null>(
     null,
   );
@@ -148,10 +169,6 @@ export function F1StrategyApp() {
     safetyCarLikely: false,
     historicalContext: replayHistoricalContext,
   });
-  const shellStyle = {
-    "--team-accent": primaryDriver.accent,
-    "--team-accent-soft": primaryDriver.accentSoft,
-  } as CSSProperties;
 
   const comparisonWinner =
     primaryStrategy.bettingValueScore === secondaryStrategy.bettingValueScore
@@ -162,12 +179,31 @@ export function F1StrategyApp() {
 
   const replayDriver = getDriver(replayForm.driverId);
   const replayRace = getRace(replayForm.raceId);
+  const predictorRace = getRace(predictorForm.raceId);
+  const predictorBoard = useMemo(
+    () =>
+      buildRacePredictorLeaderboard({
+        raceId: predictorForm.raceId,
+        currentLap: predictorForm.currentLap,
+        weather: predictorForm.weather,
+        safetyCarLikely: predictorForm.safetyCarLikely,
+        historicalData,
+      }),
+    [historicalData, predictorForm],
+  );
   const replayActualPitLaps = useMemo(
     () => replayHistoricalContext?.driverPitLaps ?? [],
     [replayHistoricalContext],
   );
   const replayUpcomingPitLap =
     replayActualPitLaps.find((lap) => lap >= replayForm.currentLap) ?? null;
+  const predictorLeader = predictorBoard[0] ?? null;
+  const activeAccentDriver =
+    viewMode === "predictor" && predictorLeader ? predictorLeader.driver : primaryDriver;
+  const shellStyle = {
+    "--team-accent": activeAccentDriver.accent,
+    "--team-accent-soft": activeAccentDriver.accentSoft,
+  } as CSSProperties;
 
   useEffect(() => {
     let ignore = false;
@@ -314,11 +350,27 @@ export function F1StrategyApp() {
                   ? "Single"
                   : viewMode === "head-to-head"
                     ? "Head to head"
-                    : "Replay"
+                    : viewMode === "predictor"
+                      ? "Predictor"
+                      : "Replay"
               }
             />
-            <MetricCard label="Lead Driver" value={primaryDriver.driver} />
-            <MetricCard label="Primary Bet Value" value={`${primaryStrategy.bettingValueScore}/10`} />
+            <MetricCard
+              label="Lead Driver"
+              value={
+                viewMode === "predictor" && predictorLeader
+                  ? predictorLeader.driver.driver
+                  : primaryDriver.driver
+              }
+            />
+            <MetricCard
+              label="Primary Bet Value"
+              value={
+                viewMode === "predictor" && predictorLeader
+                  ? `${predictorLeader.strategy.bettingValueScore}/10`
+                  : `${primaryStrategy.bettingValueScore}/10`
+              }
+            />
             <MetricCard
               label="Historical Data"
               value={
@@ -340,6 +392,11 @@ export function F1StrategyApp() {
                         ? "Matched"
                         : "Diverged"
                       : "Tracking"
+                  : viewMode === "predictor"
+                    ? predictorLeader
+                      ? predictorLeader.driver.driver.split(" ")[1] ??
+                        predictorLeader.driver.driver
+                      : "Loading"
                   : comparisonWinner === null
                     ? "Even"
                     : comparisonWinner === "primary"
@@ -363,6 +420,7 @@ export function F1StrategyApp() {
                 Replay Mode shows a real race and is the fastest way to understand
                 what the app does. Single Driver is best for a quick answer.
                 Head to Head is best when you want to compare two possible bets.
+                Race Predictor ranks the whole field like a live podium board.
               </p>
             </div>
             {viewMode === "replay" ? (
@@ -401,6 +459,12 @@ export function F1StrategyApp() {
             label="Replay Mode"
             description="Play through a completed 2025 race lap by lap."
             onClick={() => setViewMode("replay")}
+          />
+          <ModeButton
+            active={viewMode === "predictor"}
+            label="Race Predictor"
+            description="Rank the full 2025 field by live top-3 potential."
+            onClick={() => setViewMode("predictor")}
           />
         </div>
 
@@ -467,7 +531,7 @@ export function F1StrategyApp() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : viewMode === "replay" ? (
           <div className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] 2xl:gap-6">
             <ReplayInputPanel
               driver={replayDriver}
@@ -512,6 +576,20 @@ export function F1StrategyApp() {
               currentLap={replayForm.currentLap}
               actualPitLaps={replayActualPitLaps}
               pitEvent={replayPitEvent}
+            />
+          </div>
+        ) : (
+          <div className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)] 2xl:gap-6">
+            <RacePredictorInputPanel
+              form={predictorForm}
+              onChange={setPredictorForm}
+              race={predictorRace}
+            />
+            <RacePredictorLeaderboard
+              race={predictorRace}
+              currentLap={predictorForm.currentLap}
+              historicalStatus={historicalStatus}
+              entries={predictorBoard}
             />
           </div>
         )}
@@ -983,6 +1061,271 @@ function ReplayInputPanel({
         />
       </div>
     </motion.section>
+  );
+}
+
+function RacePredictorInputPanel({
+  form,
+  onChange,
+  race,
+}: {
+  form: PredictorFormState;
+  onChange: React.Dispatch<React.SetStateAction<PredictorFormState>>;
+  race: (typeof RACE_OPTIONS_2025)[number];
+}) {
+  return (
+    <motion.section
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.035))] p-5 shadow-[0_22px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-7"
+    >
+      <div className="mb-6">
+        <p className="text-[0.64rem] font-semibold uppercase tracking-[0.36em] text-white/38">
+          Race Predictor
+        </p>
+        <h2 className="mt-2 text-[1.7rem] font-semibold tracking-[-0.04em] text-white">
+          Rank the full field like a live podium board
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">
+          Pick a race snapshot and the app scores every 2025 driver using season
+          form, pit timing, tire risk, and race-specific historical patterns.
+        </p>
+      </div>
+
+      <div className="grid gap-4">
+        <StepCard
+          step={1}
+          title="Choose the race"
+          description="This sets the circuit profile and pulls in that track's 2025 historical pattern when available."
+        >
+          <SelectField
+            label="Predictor race"
+            value={form.raceId}
+            options={RACE_OPTIONS_2025.map((option) => ({
+              label: `R${option.round} — ${option.grandPrix}`,
+              value: option.id,
+            }))}
+            onChange={(value) =>
+              onChange((current) => ({
+                ...current,
+                raceId: value,
+                currentLap: Math.min(current.currentLap, getRace(value).laps),
+              }))
+            }
+            accent="#ff5f56"
+          />
+        </StepCard>
+
+        <StepCard
+          step={2}
+          title="Choose the race moment"
+          description="Move through the race to see how the leaderboard changes as tire age and pit timing evolve."
+        >
+          <SliderField
+            label="Predictor lap"
+            value={form.currentLap}
+            min={1}
+            max={race.laps}
+            onChange={(value) =>
+              onChange((current) => ({
+                ...current,
+                currentLap: value,
+              }))
+            }
+            accent="#ff5f56"
+          />
+        </StepCard>
+
+        <StepCard
+          step={3}
+          title="Set the conditions"
+          description="Use simple race conditions that apply to the whole field."
+        >
+          <div className="grid gap-5">
+            <SelectField
+              label="Predictor weather"
+              value={form.weather}
+              onChange={(value) =>
+                onChange((current) => ({
+                  ...current,
+                  weather: value as PitStrategyInput["weather"],
+                }))
+              }
+              options={[
+                { label: "Dry", value: "dry" },
+                { label: "Wet", value: "wet" },
+              ]}
+              accent="#ff5f56"
+            />
+            <div className="rounded-[26px] border border-[#f59e0b]/40 bg-[linear-gradient(180deg,rgba(245,158,11,0.14),rgba(245,158,11,0.06))] p-5">
+              <ToggleField
+                label="Predictor safety car"
+                checked={form.safetyCarLikely}
+                checkedLabel="Safety car likely soon"
+                uncheckedLabel="Normal green-flag running"
+                accent="#f59e0b"
+                onChange={(checked) =>
+                  onChange((current) => ({
+                    ...current,
+                    safetyCarLikely: checked,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </StepCard>
+      </div>
+    </motion.section>
+  );
+}
+
+function RacePredictorLeaderboard({
+  race,
+  currentLap,
+  historicalStatus,
+  entries,
+}: {
+  race: (typeof RACE_OPTIONS_2025)[number];
+  currentLap: number;
+  historicalStatus: "loading" | "ready" | "error";
+  entries: ReturnType<typeof buildRacePredictorLeaderboard>;
+}) {
+  const podium = entries.slice(0, 3);
+
+  return (
+    <motion.section
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.035))] p-5 shadow-[0_22px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-7"
+    >
+      <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-[0.64rem] font-semibold uppercase tracking-[0.36em] text-white/38">
+            Race Predictor
+          </p>
+          <h2 className="mt-2 text-[1.9rem] font-semibold tracking-[-0.05em] text-white">
+            {race.grandPrix} live leaderboard
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60">
+            Ranked by current top-3 potential at lap {currentLap}. The score blends
+            season strength, pit timing, tire risk, bet value, and race-specific
+            2025 history when available.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {podium.map((entry, index) => (
+            <InsightCard
+              key={entry.driver.id}
+              label={`Projected top ${index + 1}`}
+              value={entry.driver.driver}
+              detail={`${entry.strategy.bettingValueScore}/10 bet value • ${entry.tireRisk} tire risk`}
+              accent={entry.driver.accent}
+            />
+          ))}
+        </div>
+      </div>
+
+      {historicalStatus === "loading" ? (
+        <p className="mt-5 text-sm leading-6 text-white/56">
+          Loading completed 2025 race history for circuit-specific ranking adjustments.
+        </p>
+      ) : null}
+
+      <div className="mt-6 grid gap-3">
+        {entries.map((entry, index) => (
+          <RacePredictorEntryCard key={entry.driver.id} entry={entry} rank={index + 1} />
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function RacePredictorEntryCard({
+  entry,
+  rank,
+}: {
+  entry: ReturnType<typeof buildRacePredictorLeaderboard>[number];
+  rank: number;
+}) {
+  const topThree = rank <= 3;
+
+  return (
+    <motion.div
+      layout
+      className="grid gap-4 rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(0,0,0,0.2))] p-5 lg:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]"
+      style={{
+        borderColor: topThree ? `${entry.driver.accent}66` : `${entry.driver.accent}2b`,
+        boxShadow: topThree ? `0 0 0 1px ${entry.driver.accent}26 inset` : undefined,
+      }}
+    >
+      <div className="flex h-14 w-14 items-center justify-center rounded-[18px] border border-white/10 bg-black/28 text-[1.25rem] font-semibold text-white">
+        P{rank}
+      </div>
+
+      <div>
+        <div className="flex items-center gap-3">
+          <div
+            className="h-3 w-3 rounded-full"
+            style={{ backgroundColor: entry.driver.accent }}
+          />
+          <h3 className="text-[1.2rem] font-semibold tracking-[-0.03em] text-white">
+            {entry.driver.driver}
+          </h3>
+          <span className="rounded-full border border-white/8 bg-white/5 px-2.5 py-1 text-[0.67rem] font-semibold uppercase tracking-[0.18em] text-white/56">
+            {entry.driver.team}
+          </span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-white/64">{entry.reason}</p>
+      </div>
+
+      <LeaderboardStat
+        label="Race score"
+        value={String(entry.raceScore)}
+        accent={entry.driver.accent}
+      />
+      <LeaderboardStat
+        label="Tire risk"
+        value={entry.tireRisk}
+        accent={entry.driver.accent}
+      />
+      <LeaderboardStat
+        label="Bet value"
+        value={`${entry.strategy.bettingValueScore}/10`}
+        accent={entry.driver.accent}
+      />
+    </motion.div>
+  );
+}
+
+function LeaderboardStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div
+      className="min-w-[118px] rounded-[18px] border px-4 py-3 text-left lg:text-right"
+      style={{
+        borderColor: `${accent}33`,
+        backgroundColor: "rgba(0,0,0,0.22)",
+      }}
+    >
+      <p className="text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-white/40">
+        {label}
+      </p>
+      <AnimatedMetric
+        value={value}
+        className="mt-2 text-[1.25rem] font-semibold tracking-[-0.04em] text-white"
+      />
+    </div>
   );
 }
 
@@ -1905,10 +2248,6 @@ function getAlertAccent(level: "high" | "medium" | "low", fallbackAccent: string
 
 function getDriver(driverId: string) {
   return DRIVER_OPTIONS.find((driver) => driver.id === driverId) ?? DRIVER_OPTIONS[0];
-}
-
-function getRace(raceId: string) {
-  return RACE_OPTIONS_2025.find((race) => race.id === raceId) ?? RACE_OPTIONS_2025[0];
 }
 
 function createInitialForm(driverId: string, raceId: string): StrategyFormState {

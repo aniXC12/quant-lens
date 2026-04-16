@@ -66,6 +66,7 @@ const ERGAST_TO_LOCAL_DRIVER_ID: Record<string, string> = {
   ocon: "esteban-ocon",
   gasly: "pierre-gasly",
   doohan: "jack-doohan",
+  colapinto: "franco-colapinto",
   albon: "alex-albon",
   sainz: "carlos-sainz",
   hulkenberg: "nico-hulkenberg",

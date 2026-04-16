@@ -16,6 +16,8 @@ export type DriverOption = {
   team: TeamName;
   accent: string;
   accentSoft: string;
+  seasonRank: number;
+  seasonPoints: number;
 };
 
 export const DRIVER_OPTIONS: DriverOption[] = [
@@ -25,6 +27,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "McLaren",
     accent: "#ff8700",
     accentSoft: "rgba(255, 135, 0, 0.18)",
+    seasonRank: 1,
+    seasonPoints: 423,
   },
   {
     id: "oscar-piastri",
@@ -32,6 +36,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "McLaren",
     accent: "#ff8700",
     accentSoft: "rgba(255, 135, 0, 0.18)",
+    seasonRank: 3,
+    seasonPoints: 410,
   },
   {
     id: "charles-leclerc",
@@ -39,6 +45,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Ferrari",
     accent: "#dc0000",
     accentSoft: "rgba(220, 0, 0, 0.18)",
+    seasonRank: 5,
+    seasonPoints: 242,
   },
   {
     id: "lewis-hamilton",
@@ -46,6 +54,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Ferrari",
     accent: "#dc0000",
     accentSoft: "rgba(220, 0, 0, 0.18)",
+    seasonRank: 6,
+    seasonPoints: 156,
   },
   {
     id: "max-verstappen",
@@ -53,13 +63,17 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Red Bull Racing",
     accent: "#1e5bc6",
     accentSoft: "rgba(30, 91, 198, 0.18)",
+    seasonRank: 2,
+    seasonPoints: 421,
   },
   {
     id: "liam-lawson",
     driver: "Liam Lawson",
-    team: "Red Bull Racing",
-    accent: "#1e5bc6",
-    accentSoft: "rgba(30, 91, 198, 0.18)",
+    team: "Racing Bulls",
+    accent: "#6692ff",
+    accentSoft: "rgba(102, 146, 255, 0.18)",
+    seasonRank: 14,
+    seasonPoints: 38,
   },
   {
     id: "george-russell",
@@ -67,6 +81,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Mercedes",
     accent: "#27f4d2",
     accentSoft: "rgba(39, 244, 210, 0.18)",
+    seasonRank: 4,
+    seasonPoints: 319,
   },
   {
     id: "kimi-antonelli",
@@ -74,6 +90,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Mercedes",
     accent: "#27f4d2",
     accentSoft: "rgba(39, 244, 210, 0.18)",
+    seasonRank: 7,
+    seasonPoints: 150,
   },
   {
     id: "fernando-alonso",
@@ -81,6 +99,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Aston Martin",
     accent: "#229971",
     accentSoft: "rgba(34, 153, 113, 0.18)",
+    seasonRank: 10,
+    seasonPoints: 56,
   },
   {
     id: "lance-stroll",
@@ -88,13 +108,17 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Aston Martin",
     accent: "#229971",
     accentSoft: "rgba(34, 153, 113, 0.18)",
+    seasonRank: 16,
+    seasonPoints: 33,
   },
   {
     id: "yuki-tsunoda",
     driver: "Yuki Tsunoda",
-    team: "Racing Bulls",
-    accent: "#6692ff",
-    accentSoft: "rgba(102, 146, 255, 0.18)",
+    team: "Red Bull Racing",
+    accent: "#1e5bc6",
+    accentSoft: "rgba(30, 91, 198, 0.18)",
+    seasonRank: 17,
+    seasonPoints: 33,
   },
   {
     id: "isack-hadjar",
@@ -102,6 +126,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Racing Bulls",
     accent: "#6692ff",
     accentSoft: "rgba(102, 146, 255, 0.18)",
+    seasonRank: 12,
+    seasonPoints: 51,
   },
   {
     id: "oliver-bearman",
@@ -109,6 +135,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Haas F1 Team",
     accent: "#b6babd",
     accentSoft: "rgba(182, 186, 189, 0.18)",
+    seasonRank: 13,
+    seasonPoints: 41,
   },
   {
     id: "esteban-ocon",
@@ -116,6 +144,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Haas F1 Team",
     accent: "#b6babd",
     accentSoft: "rgba(182, 186, 189, 0.18)",
+    seasonRank: 15,
+    seasonPoints: 38,
   },
   {
     id: "pierre-gasly",
@@ -123,6 +153,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Alpine",
     accent: "#ff87bc",
     accentSoft: "rgba(255, 135, 188, 0.18)",
+    seasonRank: 18,
+    seasonPoints: 22,
   },
   {
     id: "jack-doohan",
@@ -130,6 +162,17 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Alpine",
     accent: "#ff87bc",
     accentSoft: "rgba(255, 135, 188, 0.18)",
+    seasonRank: 21,
+    seasonPoints: 0,
+  },
+  {
+    id: "franco-colapinto",
+    driver: "Franco Colapinto",
+    team: "Alpine",
+    accent: "#ff87bc",
+    accentSoft: "rgba(255, 135, 188, 0.18)",
+    seasonRank: 20,
+    seasonPoints: 0,
   },
   {
     id: "alex-albon",
@@ -137,6 +180,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Williams",
     accent: "#1868db",
     accentSoft: "rgba(24, 104, 219, 0.18)",
+    seasonRank: 8,
+    seasonPoints: 73,
   },
   {
     id: "carlos-sainz",
@@ -144,6 +189,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Williams",
     accent: "#1868db",
     accentSoft: "rgba(24, 104, 219, 0.18)",
+    seasonRank: 9,
+    seasonPoints: 64,
   },
   {
     id: "nico-hulkenberg",
@@ -151,6 +198,8 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Kick Sauber",
     accent: "#52e252",
     accentSoft: "rgba(82, 226, 82, 0.18)",
+    seasonRank: 11,
+    seasonPoints: 51,
   },
   {
     id: "gabriel-bortoleto",
@@ -158,5 +207,7 @@ export const DRIVER_OPTIONS: DriverOption[] = [
     team: "Kick Sauber",
     accent: "#52e252",
     accentSoft: "rgba(82, 226, 82, 0.18)",
+    seasonRank: 19,
+    seasonPoints: 19,
   },
 ];
