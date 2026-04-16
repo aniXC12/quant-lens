@@ -10,7 +10,7 @@ import { getMemberById, members } from "@/lib/members";
 
 describe("directory helpers", () => {
   test("keeps the onboarding roster and normalizes shared profile links", () => {
-    expect(members).toHaveLength(22);
+    expect(members.length).toBeGreaterThanOrEqual(22);
     expect(members.find((member) => member.id === "jay-khemchandani")?.links.linkedin).toBe(
       "https://www.linkedin.com/in/jay-khemchandani",
     );

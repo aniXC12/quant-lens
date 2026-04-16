@@ -1,29 +1,12 @@
-import { getBuildProvenance } from "@/lib/build-provenance";
-import { DirectoryHomeExperience } from "@/components/directory-home-experience";
-import { members } from "@/lib/members";
+import type { Metadata } from "next";
+import { F1StrategyApp } from "@/components/f1-strategy-app";
 
-type HomeProps = {
-  searchParams: Promise<{
-    skipIntro?: string | string[];
-  }>;
+export const metadata: Metadata = {
+  title: "F1 Pit Stop Strategy Predictor",
+  description:
+    "Predict a Formula 1 pit stop window from lap count, tire age, compound, and weather conditions.",
 };
 
-function shouldSkipIntro(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    return value.includes("1") || value.includes("true");
-  }
-
-  return value === "1" || value === "true";
-}
-
-export default async function Home({ searchParams }: HomeProps) {
-  const params = await searchParams;
-
-  return (
-    <DirectoryHomeExperience
-      initialMembers={members}
-      buildProvenance={getBuildProvenance()}
-      skipIntro={shouldSkipIntro(params.skipIntro)}
-    />
-  );
+export default function Home() {
+  return <F1StrategyApp />;
 }

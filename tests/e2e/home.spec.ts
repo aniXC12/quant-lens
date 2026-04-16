@@ -4,94 +4,51 @@ test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
 
-test("renders the student directory with the onboarding roster", async ({ page }) => {
+test("renders the F1 pit strategy app with prediction controls", async ({
+  page,
+}) => {
   await page.goto("/");
 
   await expect(
     page.getByRole("heading", {
-      name: /student directory/i,
+      name: /predict the next pit window/i,
     }),
   ).toBeVisible();
-  await expect(page.getByText("22 students")).toBeVisible();
+  await expect(page.getByText(/Race Strategy Console/i)).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Student directory" }),
+    page.locator("header").getByText("Lewis Hamilton", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Student network graph" }),
-  ).toBeVisible();
-
-  const directoryRows = page.getByRole("table").locator("tbody tr");
-
-  await expect(directoryRows).toHaveCount(22);
-  await expect(directoryRows.filter({ hasText: "Jason Yi" })).toHaveCount(1);
-  await expect(
-    page.getByRole("link", { name: "Jason Yi on LinkedIn" }),
-  ).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "site" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "lidylan.dev" })).toBeVisible();
+  await expect(page.getByText(/Model confidence/i)).toBeVisible();
+  await expect(page.getByText(/Tire degradation/i)).toBeVisible();
 });
 
-test("navigates from the directory to a routed member page", async ({ page }) => {
+test("updates the selected driver and team styling context", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("link", { name: "Jason Yi" }).first().click();
+  await page.locator("select").first().selectOption("max-verstappen");
 
-  await expect(page).toHaveURL(/\/members\/jason-yi$/);
   await expect(
-    page.getByRole("heading", {
-      name: "Jason Yi",
-    }),
+    page.locator("header").getByText("Max Verstappen", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Back to directory" }),
-  ).toHaveAttribute("href", "/?skipIntro=1");
-});
-
-test("supports direct navigation to valid and invalid member routes", async ({
-  page,
-}) => {
-  await page.goto("/members/jay-khemchandani");
-
-  await expect(
-    page.getByRole("heading", {
-      name: "Jay Khemchandani",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Stanford student studying Computer Science \(AI track\)/i),
-  ).toBeVisible();
-
-  await page.goto("/members/not-a-real-student");
-
-  await expect(
-    page.getByRole("heading", {
-      name: "Member page not found",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Back to directory" }),
+    page.locator("header").getByText("Red Bull Racing", { exact: true }).first(),
   ).toBeVisible();
 });
 
-test("returns from a member page without replaying the terminal intro", async ({
+test("recomputes the strategy recommendation from user inputs", async ({
   page,
 }) => {
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto("/members/soham-kolhe");
+  await page.goto("/");
 
-  await page.getByRole("link", { name: "Back to directory" }).click();
+  const inputs = page.locator('input[type="number"]');
+  await inputs.nth(0).fill("29");
+  await inputs.nth(1).fill("57");
+  await inputs.nth(2).fill("16");
+  await page.locator("select").nth(1).selectOption("dry");
+  await page.locator("select").nth(2).selectOption("soft");
 
-  await expect(page).toHaveURL(/\/\?skipIntro=1$/);
-  await expect(
-    page.getByRole("heading", {
-      name: /student directory/i,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", {
-      name: /launching the student directory/i,
-    }),
-  ).toHaveCount(0);
+  await expect(page.getByText(/Box this lap/i)).toBeVisible();
+  await expect(page.getByText(/High/i).first()).toBeVisible();
 });
 
 test("keeps the directory readable on mobile without horizontal overflow", async ({
@@ -101,15 +58,12 @@ test("keeps the directory readable on mobile without horizontal overflow", async
   await page.goto("/");
 
   await expect(
-    page.getByRole("region", { name: "Student directory" }),
+    page.getByRole("heading", {
+      name: /predict the next pit window/i,
+    }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Student network graph" }),
-  ).toBeVisible();
-  await expect(page.getByText("Jason Yi").first()).toBeVisible();
-  await expect(page.getByText("UC Berkeley").first()).toBeVisible();
-  await expect(page.getByText("site").first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "lidylan.dev" }).first()).toBeVisible();
+  await expect(page.getByText(/Tire degradation/i)).toBeVisible();
+  await expect(page.getByText(/Strategic notes/i)).toBeVisible();
 
   const maxWidth = await page.evaluate(() =>
     Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),

@@ -14,6 +14,12 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
-    exclude: ["tests/e2e/**", "node_modules/**"],
+    include: ["lib/**/*.test.ts", "components/**/*.test.tsx"],
+    exclude: [
+      "tests/e2e/**",
+      "node_modules/**",
+      "**/node_modules/**",
+      "Codex-Lab/**",
+    ],
   },
 });
