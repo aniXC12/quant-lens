@@ -18,6 +18,8 @@ const initialForm: StrategyFormState = {
   compound: "medium",
   tireAge: 14,
   weather: "dry",
+  gapBehindSeconds: 1.8,
+  isLeading: false,
 };
 
 export function F1StrategyApp() {
@@ -75,7 +77,7 @@ export function F1StrategyApp() {
             <MetricCard label="Selected Driver" value={selectedDriver.driver} />
             <MetricCard label="Team" value={selectedDriver.team} />
             <MetricCard label="Tire Risk" value={strategy.riskLabel} />
-            <MetricCard label="Confidence" value={`${strategy.confidenceScore}%`} />
+            <MetricCard label="Bet Value" value={`${strategy.bettingValueScore}/10`} />
           </div>
         </header>
 
@@ -193,6 +195,34 @@ export function F1StrategyApp() {
               />
             </div>
 
+            <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <NumberField
+                label="Gap to car behind (sec)"
+                value={form.gapBehindSeconds}
+                min={0}
+                max={30}
+                step={0.1}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    gapBehindSeconds: value,
+                  }))
+                }
+              />
+              <ToggleField
+                label="Race position"
+                checked={form.isLeading}
+                checkedLabel="Leading the race"
+                uncheckedLabel="Not leading"
+                onChange={(checked) =>
+                  setForm((current) => ({
+                    ...current,
+                    isLeading: checked,
+                  }))
+                }
+              />
+            </div>
+
             <div className="mt-8 rounded-[28px] border border-white/8 bg-black/28 p-5">
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-[0.24em] text-white/46">
@@ -269,6 +299,98 @@ export function F1StrategyApp() {
               />
             </div>
 
+            <div
+              className="rounded-[32px] border p-6 backdrop-blur-xl sm:p-8"
+              style={{
+                borderColor: getAlertAccent(strategy.strategyAlertLevel, selectedDriver.accent),
+                backgroundColor: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.32em] text-white/46">
+                    Risk alert
+                  </p>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
+                    {strategy.strategyAlertTitle}
+                  </h3>
+                </div>
+                <div
+                  className="rounded-2xl border px-4 py-3 text-right"
+                  style={{
+                    borderColor: getAlertAccent(strategy.strategyAlertLevel, selectedDriver.accent),
+                    backgroundColor: "rgba(0,0,0,0.22)",
+                  }}
+                >
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/50">
+                    Alert level
+                  </p>
+                  <p className="mt-2 text-xl font-semibold tracking-[-0.04em] text-white">
+                    {strategy.strategyAlertLevel.toUpperCase()}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-white/76">
+                {strategy.strategyAlertBody}
+              </p>
+            </div>
+
+            <div className="rounded-[32px] border border-white/10 bg-white/6 p-6 backdrop-blur-xl sm:p-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.32em] text-white/46">
+                    Betting implications
+                  </p>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
+                    {strategy.bettingSignal}
+                  </h3>
+                </div>
+                <div
+                  className="rounded-2xl border px-4 py-3 text-right"
+                  style={{
+                    borderColor: `${selectedDriver.accent}33`,
+                    backgroundColor: "rgba(0,0,0,0.22)",
+                  }}
+                >
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/50">
+                    +/- positions
+                  </p>
+                  <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
+                    {strategy.positionDeltaLabel}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <InsightCard
+                  label="Finish odds"
+                  value={strategy.finishOddsLabel}
+                  detail={`Confidence remains ${strategy.confidenceScore}% on the pit window model.`}
+                  accent={selectedDriver.accent}
+                />
+                <InsightCard
+                  label="Strategy impact"
+                  value={strategy.positionDeltaLabel}
+                  detail={strategy.bettingReasoning}
+                  accent={selectedDriver.accent}
+                />
+              </div>
+
+              <div className="mt-4">
+                <InsightCard
+                  label="Live bet value"
+                  value={`${strategy.bettingValueScore}/10`}
+                  detail={`${strategy.bettingValueLabel}. ${strategy.bettingValueReasoning}`}
+                  accent={selectedDriver.accent}
+                />
+              </div>
+
+              <p className="mt-5 text-sm leading-6 text-white/52">
+                This is a strategy-based betting signal derived from the predicted
+                pit window and tire state, not live sportsbook pricing or market odds.
+              </p>
+            </div>
+
             <div className="rounded-[32px] border border-white/10 bg-white/6 p-6 backdrop-blur-xl sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.32em] text-white/46">
                 Strategic notes
@@ -336,12 +458,14 @@ function NumberField({
   value,
   min,
   max,
+  step,
   onChange,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
+  step?: number;
   onChange: (value: number) => void;
 }) {
   return (
@@ -358,6 +482,7 @@ function NumberField({
         value={value}
         min={min}
         max={max}
+        step={step}
         onChange={(event) => onChange(Number(event.target.value))}
         onFocus={(event) => {
           event.currentTarget.style.borderColor = "var(--team-accent)";
@@ -366,6 +491,46 @@ function NumberField({
           event.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
         }}
       />
+    </label>
+  );
+}
+
+function ToggleField({
+  label,
+  checked,
+  checkedLabel,
+  uncheckedLabel,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  checkedLabel: string;
+  uncheckedLabel: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-3 block text-xs font-semibold uppercase tracking-[0.26em] text-white/42">
+        {label}
+      </span>
+      <button
+        className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-black/28 px-4 py-4 text-left text-lg text-white transition"
+        type="button"
+        onClick={() => onChange(!checked)}
+      >
+        <span>{checked ? checkedLabel : uncheckedLabel}</span>
+        <span
+          className="relative h-7 w-14 rounded-full transition"
+          style={{
+            backgroundColor: checked ? "var(--team-accent)" : "rgba(255,255,255,0.14)",
+          }}
+        >
+          <span
+            className="absolute top-1 h-5 w-5 rounded-full bg-white transition-[left]"
+            style={{ left: checked ? "2rem" : "0.25rem" }}
+          />
+        </span>
+      </button>
     </label>
   );
 }
@@ -525,4 +690,16 @@ function getTireStatus(tireLifeUsed: number) {
   }
 
   return { label: "Stable", color: "#34d399" };
+}
+
+function getAlertAccent(level: "high" | "medium" | "low", fallbackAccent: string) {
+  if (level === "high") {
+    return "#ef444455";
+  }
+
+  if (level === "medium") {
+    return "#facc1555";
+  }
+
+  return `${fallbackAccent}55`;
 }

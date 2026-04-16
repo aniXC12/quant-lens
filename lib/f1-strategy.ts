@@ -7,6 +7,8 @@ export type PitStrategyInput = {
   compound: TireCompound;
   tireAge: number;
   weather: WeatherCondition;
+  gapBehindSeconds: number;
+  isLeading: boolean;
 };
 
 export type PitStrategyRecommendation = {
@@ -20,6 +22,17 @@ export type PitStrategyRecommendation = {
   confidenceScore: number;
   tireLifeUsed: number;
   remainingLaps: number;
+  positionDelta: number;
+  positionDeltaLabel: string;
+  finishOddsLabel: string;
+  bettingSignal: string;
+  bettingReasoning: string;
+  strategyAlertTitle: string;
+  strategyAlertBody: string;
+  strategyAlertLevel: "high" | "medium" | "low";
+  bettingValueScore: number;
+  bettingValueLabel: string;
+  bettingValueReasoning: string;
   urgencyNote: string;
   extentNote: string;
   reasoning: string;
@@ -40,6 +53,7 @@ export function getPitStopRecommendation(
   const totalLaps = clamp(Math.round(input.totalLaps), 2, 90);
   const currentLap = clamp(Math.round(input.currentLap), 1, totalLaps - 1);
   const tireAge = clamp(Math.round(input.tireAge), 0, currentLap - 1);
+  const gapBehindSeconds = clamp(input.gapBehindSeconds, 0, 30);
   const remainingLaps = totalLaps - currentLap;
   const baseLife = DRY_STINT_LIFE[input.compound];
   const adjustedLife =
@@ -63,6 +77,22 @@ export function getPitStopRecommendation(
     latestLap,
     currentLap + earliestOffset(wearState, input.weather),
   );
+  const bettingView = getBettingView({
+    currentLap,
+    totalLaps,
+    remainingLaps,
+    weather: input.weather,
+    tireLifeUsed,
+    earliestLap,
+    latestLap,
+    canReachFlag,
+    wearState,
+  });
+  const strategyAlert = getStrategyAlert({
+    compound: input.compound,
+    gapBehindSeconds,
+    isLeading: input.isLeading,
+  });
 
   if (canReachFlag && tireLifeUsed < 88) {
     const confidenceScore = clamp(
@@ -73,8 +103,14 @@ export function getPitStopRecommendation(
           tireLifeUsed * 0.08,
       ),
       62,
-      96,
+        96,
     );
+    const bettingValue = getBettingValue({
+      confidenceScore,
+      riskLabel: riskLabelFromScore(riskScore * 0.82),
+      positionDelta: bettingView.positionDelta,
+      strategyAlertLevel: strategyAlert.level,
+    });
 
     return {
       windowStart: null,
@@ -87,6 +123,17 @@ export function getPitStopRecommendation(
       confidenceScore,
       tireLifeUsed,
       remainingLaps,
+      positionDelta: bettingView.positionDelta,
+      positionDeltaLabel: formatPositionDelta(bettingView.positionDelta),
+      finishOddsLabel: bettingView.finishOddsLabel,
+      bettingSignal: bettingView.signal,
+      bettingReasoning: bettingView.reasoning,
+      strategyAlertTitle: strategyAlert.title,
+      strategyAlertBody: strategyAlert.body,
+      strategyAlertLevel: strategyAlert.level,
+      bettingValueScore: bettingValue.score,
+      bettingValueLabel: bettingValue.label,
+      bettingValueReasoning: bettingValue.reasoning,
       urgencyNote: "Current degradation profile supports a no-stop finish.",
       extentNote: "Manage pace and protect the fronts through the final phase.",
       reasoning: `Your ${input.compound} tires still project enough life to cover the final ${remainingLaps} laps${input.weather === "wet" ? " despite the extra weather volatility" : ""}. Unless track position demands an aggressive undercut, the cleaner call is to stay out and finish.`,
@@ -111,6 +158,14 @@ export function getPitStopRecommendation(
     58,
     95,
   );
+  const riskLabel =
+    earliestLap === currentLap ? "High" : riskLabelFromScore(riskScore);
+  const bettingValue = getBettingValue({
+    confidenceScore,
+    riskLabel,
+    positionDelta: bettingView.positionDelta,
+    strategyAlertLevel: strategyAlert.level,
+  });
 
   return {
     windowStart: earliestLap,
@@ -123,11 +178,21 @@ export function getPitStopRecommendation(
     windowEndLabel: `Lap ${latestLap}`,
     stopTypeLabel:
       earliestLap === currentLap ? "Immediate stop" : canReachFlag ? "Flexible stop" : "Mandatory stop",
-    riskLabel:
-      earliestLap === currentLap ? "High" : riskLabelFromScore(riskScore),
+    riskLabel,
     confidenceScore,
     tireLifeUsed,
     remainingLaps,
+    positionDelta: bettingView.positionDelta,
+    positionDeltaLabel: formatPositionDelta(bettingView.positionDelta),
+    finishOddsLabel: bettingView.finishOddsLabel,
+    bettingSignal: bettingView.signal,
+    bettingReasoning: bettingView.reasoning,
+    strategyAlertTitle: strategyAlert.title,
+    strategyAlertBody: strategyAlert.body,
+    strategyAlertLevel: strategyAlert.level,
+    bettingValueScore: bettingValue.score,
+    bettingValueLabel: bettingValue.label,
+    bettingValueReasoning: bettingValue.reasoning,
     urgencyNote:
       earliestLap === currentLap
         ? "Degradation is already in the attack zone."
@@ -239,6 +304,184 @@ function riskLabelFromScore(score: number) {
   }
 
   return "Low";
+}
+
+function getBettingView({
+  currentLap,
+  totalLaps,
+  remainingLaps,
+  weather,
+  tireLifeUsed,
+  earliestLap,
+  latestLap,
+  canReachFlag,
+  wearState,
+}: {
+  currentLap: number;
+  totalLaps: number;
+  remainingLaps: number;
+  weather: WeatherCondition;
+  tireLifeUsed: number;
+  earliestLap: number;
+  latestLap: number;
+  canReachFlag: boolean;
+  wearState: "stable" | "managed" | "critical";
+}) {
+  const raceProgress = currentLap / totalLaps;
+  const tightWindow = latestLap - earliestLap <= 2;
+  let positionDelta = 0;
+
+  if (canReachFlag && tireLifeUsed < 70) {
+    positionDelta = raceProgress > 0.72 ? 1 : 0;
+  } else if (canReachFlag && tireLifeUsed < 88) {
+    positionDelta = 0;
+  } else if (wearState === "critical") {
+    positionDelta = tightWindow ? -2 : -1;
+  } else if (wearState === "managed") {
+    positionDelta = 1;
+  } else {
+    positionDelta = 0;
+  }
+
+  if (weather === "wet") {
+    positionDelta -= 1;
+  }
+
+  if (remainingLaps <= 8 && canReachFlag) {
+    positionDelta += 1;
+  }
+
+  positionDelta = clamp(positionDelta, -3, 3);
+
+  const finishOddsLabel =
+    positionDelta >= 2
+      ? "Finish odds improving"
+      : positionDelta === 1
+        ? "Slightly stronger finish odds"
+        : positionDelta === 0
+          ? "Finish odds mostly stable"
+          : positionDelta === -1
+            ? "Finish odds under pressure"
+            : "Finish odds dropping";
+
+  const signal =
+    positionDelta > 0
+      ? "Likely to gain track position"
+      : positionDelta < 0
+        ? "Likely to lose positions"
+        : "Likely to hold station";
+
+  const reasoning =
+    positionDelta > 0
+      ? `The predicted window sets up a cleaner crossover and gives this driver a realistic shot at gaining ${formatPositionDelta(positionDelta)} if rivals pit later or hit higher degradation.`
+      : positionDelta < 0
+        ? `The recommended stop is defensive rather than attacking, so the likely outcome is ${formatPositionDelta(positionDelta)} as pit loss or late-stint drop-off compresses race finish odds.`
+        : "The model sees the strategy as neutral for betting purposes: the call should protect the current result more than it creates a major swing in finishing upside.";
+
+  return {
+    positionDelta,
+    finishOddsLabel,
+    signal,
+    reasoning,
+  };
+}
+
+function formatPositionDelta(value: number) {
+  if (value > 0) {
+    return `+${value}`;
+  }
+
+  return `${value}`;
+}
+
+function getStrategyAlert({
+  compound,
+  gapBehindSeconds,
+  isLeading,
+}: {
+  compound: TireCompound;
+  gapBehindSeconds: number;
+  isLeading: boolean;
+}) {
+  if (gapBehindSeconds <= 2) {
+    return {
+      title: "Undercut threat",
+      body: `A car behind within ${gapBehindSeconds.toFixed(1)}s is close enough to attack an undercut if you delay the stop window.`,
+      level: "high" as const,
+    };
+  }
+
+  if (isLeading && compound === "hard") {
+    return {
+      title: "Overcut opportunity",
+      body: "Leading on the harder tire opens an overcut chance if you extend while rivals switch earlier and rejoin in traffic.",
+      level: "medium" as const,
+    };
+  }
+
+  return {
+    title: "Strategy window stable",
+    body: "No immediate undercut or overcut trigger is obvious from the current gap and tire-state inputs.",
+    level: "low" as const,
+  };
+}
+
+function getBettingValue({
+  confidenceScore,
+  riskLabel,
+  positionDelta,
+  strategyAlertLevel,
+}: {
+  confidenceScore: number;
+  riskLabel: string;
+  positionDelta: number;
+  strategyAlertLevel: "high" | "medium" | "low";
+}) {
+  const normalizedConfidence = confidenceScore / 100;
+  const riskFactor = riskLabel === "Low" ? 1 : riskLabel === "Medium" ? 0.62 : 0.28;
+  const positionFactor = clamp((positionDelta + 3) / 6, 0, 1);
+  const alertFactor =
+    strategyAlertLevel === "low" ? 1 : strategyAlertLevel === "medium" ? 0.72 : 0.44;
+  const negativePositionPenalty = positionDelta < 0 ? Math.abs(positionDelta) * 0.9 : 0;
+  const highAlertPenalty = strategyAlertLevel === "high" ? 1.1 : 0;
+
+  const score = clamp(
+    Math.round(
+      1 +
+        (normalizedConfidence * 4.5 +
+          riskFactor * 2.4 +
+          positionFactor * 2.1 +
+          alertFactor * 1.2) -
+        negativePositionPenalty -
+        highAlertPenalty,
+    ),
+    1,
+    10,
+  );
+
+  const label =
+    score >= 8
+      ? "Strong live-bet value"
+      : score >= 6
+        ? "Playable live-bet value"
+        : score >= 4
+          ? "Borderline live-bet value"
+          : "Weak live-bet value";
+
+  const reasoning =
+    score >= 8
+      ? "Confidence is strong, downside risk is contained, and the projected position swing supports a top-3 live bet."
+      : score >= 6
+        ? "The setup is reasonably attractive, but there is still enough pit-window variance that price discipline matters."
+        : score >= 4
+          ? "There is some upside, but the risk and position outlook are too mixed to call this a clear top-3 betting spot."
+          : "The strategy picture is too unstable or defensive right now to justify a strong live top-3 bet signal.";
+
+  return {
+    score,
+    label,
+    reasoning,
+  };
 }
 
 function clamp(value: number, min: number, max: number) {
