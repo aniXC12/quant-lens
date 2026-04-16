@@ -11,6 +11,7 @@ describe("getPitStopRecommendation", () => {
       weather: "dry",
       gapBehindSeconds: 4.2,
       isLeading: true,
+      safetyCarLikely: false,
     });
 
     expect(result.windowStart).toBeNull();
@@ -29,6 +30,7 @@ describe("getPitStopRecommendation", () => {
       weather: "dry",
       gapBehindSeconds: 1.4,
       isLeading: false,
+      safetyCarLikely: false,
     });
 
     expect(result.windowStart).toBe(29);
@@ -47,6 +49,7 @@ describe("getPitStopRecommendation", () => {
       weather: "wet",
       gapBehindSeconds: 3.5,
       isLeading: false,
+      safetyCarLikely: false,
     });
 
     expect(result.windowStart).toBeGreaterThanOrEqual(18);
@@ -64,6 +67,7 @@ describe("getPitStopRecommendation", () => {
       weather: "dry",
       gapBehindSeconds: 5,
       isLeading: true,
+      safetyCarLikely: false,
     });
 
     expect(result.positionDelta).toBeGreaterThanOrEqual(1);
@@ -80,10 +84,39 @@ describe("getPitStopRecommendation", () => {
       weather: "wet",
       gapBehindSeconds: 1.7,
       isLeading: false,
+      safetyCarLikely: false,
     });
 
     expect(result.positionDelta).toBeLessThan(0);
     expect(result.bettingSignal).toContain("lose");
     expect(result.bettingValueScore).toBeLessThanOrEqual(5);
+  });
+
+  it("recalculates strategy when a safety car is likely soon", () => {
+    const normal = getPitStopRecommendation({
+      currentLap: 24,
+      totalLaps: 57,
+      compound: "hard",
+      tireAge: 15,
+      weather: "dry",
+      gapBehindSeconds: 3.8,
+      isLeading: false,
+      safetyCarLikely: false,
+    });
+
+    const safetyCar = getPitStopRecommendation({
+      currentLap: 24,
+      totalLaps: 57,
+      compound: "hard",
+      tireAge: 15,
+      weather: "dry",
+      gapBehindSeconds: 3.8,
+      isLeading: false,
+      safetyCarLikely: true,
+    });
+
+    expect(safetyCar.windowLabel).not.toBe(normal.windowLabel);
+    expect(safetyCar.strategyAlertTitle).toContain("Safety car");
+    expect(safetyCar.bettingValueScore).toBeGreaterThanOrEqual(normal.bettingValueScore);
   });
 });

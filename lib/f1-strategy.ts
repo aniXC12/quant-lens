@@ -9,6 +9,7 @@ export type PitStrategyInput = {
   weather: WeatherCondition;
   gapBehindSeconds: number;
   isLeading: boolean;
+  safetyCarLikely: boolean;
 };
 
 export type PitStrategyRecommendation = {
@@ -55,6 +56,7 @@ export function getPitStopRecommendation(
   const tireAge = clamp(Math.round(input.tireAge), 0, currentLap - 1);
   const gapBehindSeconds = clamp(input.gapBehindSeconds, 0, 30);
   const remainingLaps = totalLaps - currentLap;
+  const safetyCarWindow = Math.min(10, remainingLaps);
   const baseLife = DRY_STINT_LIFE[input.compound];
   const adjustedLife =
     input.weather === "wet" ? Math.round(baseLife * WET_STINT_FACTOR) : baseLife;
@@ -64,19 +66,29 @@ export function getPitStopRecommendation(
   );
   const lapsAvailable = Math.max(adjustedLife - tireAge, 0);
   const canReachFlag = lapsAvailable >= remainingLaps;
+  const canReachSafetyCar =
+    safetyCarWindow === 0 ? false : lapsAvailable >= Math.max(safetyCarWindow - 1, 0);
   const riskScore =
     tireAge / adjustedLife +
     (input.weather === "wet" ? 0.18 : 0) +
-    pressureByCompound(input.compound);
+    pressureByCompound(input.compound) -
+    (input.safetyCarLikely && canReachSafetyCar ? 0.08 : 0);
   const wearState = getWearState(tireAge / adjustedLife);
-  const latestLap = Math.min(
+  let latestLap = Math.min(
     totalLaps - 1,
     currentLap + Math.max(1, adjustedLife - tireAge - safetyBuffer(input.weather)),
   );
-  const earliestLap = Math.min(
+  let earliestLap = Math.min(
     latestLap,
     currentLap + earliestOffset(wearState, input.weather),
   );
+
+  if (input.safetyCarLikely && canReachSafetyCar && remainingLaps > safetyCarWindow) {
+    const targetLap = Math.min(totalLaps - 1, currentLap + Math.max(1, safetyCarWindow - 1));
+    earliestLap = Math.min(latestLap, Math.max(earliestLap, targetLap - 1));
+    latestLap = Math.min(totalLaps - 1, Math.max(latestLap, targetLap + 1));
+  }
+
   const bettingView = getBettingView({
     currentLap,
     totalLaps,
@@ -87,14 +99,18 @@ export function getPitStopRecommendation(
     latestLap,
     canReachFlag,
     wearState,
+    safetyCarLikely: input.safetyCarLikely,
+    canReachSafetyCar,
   });
   const strategyAlert = getStrategyAlert({
     compound: input.compound,
     gapBehindSeconds,
     isLeading: input.isLeading,
+    safetyCarLikely: input.safetyCarLikely,
+    canReachSafetyCar,
   });
 
-  if (canReachFlag && tireLifeUsed < 88) {
+  if (canReachFlag && tireLifeUsed < 88 && !input.safetyCarLikely) {
     const confidenceScore = clamp(
       Math.round(
         70 +
@@ -103,7 +119,7 @@ export function getPitStopRecommendation(
           tireLifeUsed * 0.08,
       ),
       62,
-        96,
+      96,
     );
     const bettingValue = getBettingValue({
       confidenceScore,
@@ -153,7 +169,9 @@ export function getPitStopRecommendation(
         (wearState === "critical" ? 16 : wearState === "managed" ? 10 : 4) +
         Math.max(0, 10 - (latestLap - earliestLap) * 2) +
         (canReachFlag ? 2 : 8) -
-        (input.weather === "wet" ? 6 : 0),
+        (input.weather === "wet" ? 6 : 0) -
+        (input.safetyCarLikely ? 4 : 0) +
+        (input.safetyCarLikely && canReachSafetyCar ? 6 : 0),
     ),
     58,
     95,
@@ -171,7 +189,9 @@ export function getPitStopRecommendation(
     windowStart: earliestLap,
     windowEnd: latestLap,
     windowLabel:
-      earliestLap === currentLap
+      input.safetyCarLikely && canReachSafetyCar
+        ? `Stretch to safety-car window: lap ${earliestLap} to ${latestLap}`
+        : earliestLap === currentLap
         ? `Box this lap to lap ${latestLap}`
         : `Pit window: lap ${earliestLap} to ${latestLap}`,
     windowStartLabel: earliestLap === currentLap ? "Box now" : `Lap ${earliestLap}`,
@@ -194,13 +214,17 @@ export function getPitStopRecommendation(
     bettingValueLabel: bettingValue.label,
     bettingValueReasoning: bettingValue.reasoning,
     urgencyNote:
-      earliestLap === currentLap
+      input.safetyCarLikely && canReachSafetyCar
+        ? "A likely safety car makes a short extension more valuable than a normal green-flag stop."
+        : earliestLap === currentLap
         ? "Degradation is already in the attack zone."
         : "This is the first strong lap to cover the drop-off or undercut.",
     extentNote:
       latestLap - earliestLap <= 2
         ? "The useful window is tight, so delaying further raises the risk sharply."
-        : "You have a short extension option, but the crossover point is close.",
+        : input.safetyCarLikely && canReachSafetyCar
+          ? "The projected safety-car window widens the strategic payoff for waiting a few laps."
+          : "You have a short extension option, but the crossover point is close.",
     reasoning: buildReasoning({
       compound: input.compound,
       weather: input.weather,
@@ -209,16 +233,21 @@ export function getPitStopRecommendation(
       wearState,
       earliestLap,
       latestLap,
+      safetyCarLikely: input.safetyCarLikely,
+      canReachSafetyCar,
     }),
     keyFactors: [
       `${capitalize(input.compound)} tires are operating in a ${wearState} degradation phase at ${tireAge} laps old.`,
+      input.safetyCarLikely && canReachSafetyCar
+        ? "Expected safety-car conditions inside the next 10 laps reduce pit-loss exposure and reward a controlled extension."
+        : null,
       input.weather === "wet"
         ? "Wet running compresses tire life and rewards earlier, safer crossover calls."
         : "Dry conditions allow a short extension, but the undercut window is now opening.",
       canReachFlag
         ? "You could stretch further on paper, but the pace loss likely outweighs the benefit."
         : `The remaining ${remainingLaps} laps exceed the safe life left in this stint, so a stop is required.`,
-    ],
+    ].filter(Boolean) as string[],
   };
 }
 
@@ -230,6 +259,8 @@ function buildReasoning({
   wearState,
   earliestLap,
   latestLap,
+  safetyCarLikely,
+  canReachSafetyCar,
 }: {
   compound: TireCompound;
   weather: WeatherCondition;
@@ -238,13 +269,17 @@ function buildReasoning({
   wearState: "stable" | "managed" | "critical";
   earliestLap: number;
   latestLap: number;
+  safetyCarLikely: boolean;
+  canReachSafetyCar: boolean;
 }) {
   const compoundLabel = capitalize(compound);
   const weatherText =
     weather === "wet"
       ? "the circuit is wet, so degradation and crossover risk rise quickly"
       : "the track is dry, so you can lean on predictable degradation for a short extension";
-  const finishText = canReachFlag
+  const finishText = safetyCarLikely && canReachSafetyCar
+    ? "A likely safety car inside the next 10 laps reduces expected pit loss, so extending toward that window becomes strategically attractive."
+    : canReachFlag
     ? "You can theoretically reach the end, but the tire delta is likely to erode lap time before then."
     : `You do not have enough projected tire life to cover the final ${remainingLaps} laps without a stop.`;
 
@@ -316,6 +351,8 @@ function getBettingView({
   latestLap,
   canReachFlag,
   wearState,
+  safetyCarLikely,
+  canReachSafetyCar,
 }: {
   currentLap: number;
   totalLaps: number;
@@ -326,12 +363,16 @@ function getBettingView({
   latestLap: number;
   canReachFlag: boolean;
   wearState: "stable" | "managed" | "critical";
+  safetyCarLikely: boolean;
+  canReachSafetyCar: boolean;
 }) {
   const raceProgress = currentLap / totalLaps;
   const tightWindow = latestLap - earliestLap <= 2;
   let positionDelta = 0;
 
-  if (canReachFlag && tireLifeUsed < 70) {
+  if (safetyCarLikely && canReachSafetyCar) {
+    positionDelta = 2;
+  } else if (canReachFlag && tireLifeUsed < 70) {
     positionDelta = raceProgress > 0.72 ? 1 : 0;
   } else if (canReachFlag && tireLifeUsed < 88) {
     positionDelta = 0;
@@ -398,11 +439,23 @@ function getStrategyAlert({
   compound,
   gapBehindSeconds,
   isLeading,
+  safetyCarLikely,
+  canReachSafetyCar,
 }: {
   compound: TireCompound;
   gapBehindSeconds: number;
   isLeading: boolean;
+  safetyCarLikely: boolean;
+  canReachSafetyCar: boolean;
 }) {
+  if (safetyCarLikely && canReachSafetyCar) {
+    return {
+      title: "Safety car opportunity",
+      body: "A likely safety car in the next 10 laps would make the stop cheaper, so stretching toward that window becomes the preferred strategic play.",
+      level: "medium" as const,
+    };
+  }
+
   if (gapBehindSeconds <= 2) {
     return {
       title: "Undercut threat",
