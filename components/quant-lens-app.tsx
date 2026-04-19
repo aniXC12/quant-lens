@@ -89,6 +89,181 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
+function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
+  const points = analysis.signalHistory;
+  const bounds = useMemo(() => {
+    const values = points.flatMap((point) => [point.momentum, point.meanReversion]);
+    const min = Math.min(-1, ...values);
+    const max = Math.max(1, ...values);
+    const range = max - min || 1;
+
+    return { min, max, range };
+  }, [points]);
+
+  const momentumPath = useMemo(() => {
+    return points
+      .map((point, index) => {
+        const x = (index / Math.max(points.length - 1, 1)) * 100;
+        const y = 100 - ((point.momentum - bounds.min) / bounds.range) * 100;
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+  }, [bounds.min, bounds.range, points]);
+
+  const meanReversionPath = useMemo(() => {
+    return points
+      .map((point, index) => {
+        const x = (index / Math.max(points.length - 1, 1)) * 100;
+        const y = 100 - ((point.meanReversion - bounds.min) / bounds.range) * 100;
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+  }, [bounds.min, bounds.range, points]);
+
+  function toY(value: number) {
+    return 100 - ((value - bounds.min) / bounds.range) * 100;
+  }
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.08 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Signal History</p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">90-day signal tape</h3>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.2em]">
+          <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-cyan-100">
+            Momentum
+          </span>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-amber-100">
+            Mean reversion
+          </span>
+          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-emerald-100">
+            Buy trigger
+          </span>
+          <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-rose-100">
+            Sell trigger
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,18,31,0.85),rgba(5,10,18,0.72))] p-4">
+        <svg viewBox="0 0 100 100" className="h-72 w-full overflow-visible">
+          {[0, 25, 50, 75, 100].map((line) => (
+            <line
+              key={line}
+              x1="0"
+              y1={line}
+              x2="100"
+              y2={line}
+              stroke="rgba(148,163,184,0.14)"
+              strokeWidth="0.45"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          <line
+            x1="0"
+            y1={toY(0)}
+            x2="100"
+            y2={toY(0)}
+            stroke="rgba(255,255,255,0.22)"
+            strokeDasharray="2.5 2.5"
+            strokeWidth="0.6"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={momentumPath}
+            fill="none"
+            stroke="#7dd3fc"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={meanReversionPath}
+            fill="none"
+            stroke="#fbbf24"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          {points.map((point, index) => {
+            if (point.recommendation === "Hold") {
+              return null;
+            }
+
+            const x = (index / Math.max(points.length - 1, 1)) * 100;
+            const y = point.recommendation === "Buy" ? toY(point.momentum) : toY(point.meanReversion);
+            const fill = point.recommendation === "Buy" ? "#34d399" : "#fb7185";
+
+            return (
+              <circle
+                key={`${point.timestamp}-${point.recommendation}`}
+                cx={x}
+                cy={y}
+                r="1.8"
+                fill={fill}
+                stroke="rgba(3,7,13,0.9)"
+                strokeWidth="0.5"
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+            <p className="micro-label text-[#7d8597]">Buy triggers</p>
+            <p className="mt-2 text-3xl font-semibold text-white">
+              {analysis.signalReliability.buySignals}
+            </p>
+            <p className="mt-2 text-sm text-[#aeb9cf]">
+              Avg next 10D return{" "}
+              <span className={scoreStyles(analysis.signalReliability.averageBuyReturn10Day ?? 0)}>
+                {analysis.signalReliability.averageBuyReturn10Day == null
+                  ? "N/A"
+                  : `${analysis.signalReliability.averageBuyReturn10Day >= 0 ? "+" : ""}${(
+                      analysis.signalReliability.averageBuyReturn10Day * 100
+                    ).toFixed(1)}%`}
+              </span>
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+            <p className="micro-label text-[#7d8597]">Sell triggers</p>
+            <p className="mt-2 text-3xl font-semibold text-white">
+              {analysis.signalReliability.sellSignals}
+            </p>
+            <p className="mt-2 text-sm text-[#aeb9cf]">
+              Avg next 10D return{" "}
+              <span className={scoreStyles(-(analysis.signalReliability.averageSellReturn10Day ?? 0))}>
+                {analysis.signalReliability.averageSellReturn10Day == null
+                  ? "N/A"
+                  : `${analysis.signalReliability.averageSellReturn10Day >= 0 ? "+" : ""}${(
+                      analysis.signalReliability.averageSellReturn10Day * 100
+                    ).toFixed(1)}%`}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Reliability Read</p>
+          <p className="mt-3 text-sm leading-8 text-[#d2d8e5]">
+            {analysis.signalReliability.explanation}
+          </p>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 function ScoreBadge({ recommendation }: { recommendation: QuantLensAnalysis["recommendation"] }) {
   const styles =
     recommendation === "Buy"
@@ -745,6 +920,7 @@ export function QuantLensApp() {
                   <SignalCard signal={comparison.left.meanReversion} />
                   <SignalCard signal={comparison.left.volatilityAdjusted} />
                 </div>
+                <SignalHistoryChart analysis={comparison.left} />
                 <AnalysisSidebar analysis={comparison.left} />
               </div>
 
@@ -754,6 +930,7 @@ export function QuantLensApp() {
                   <SignalCard signal={comparison.right.meanReversion} />
                   <SignalCard signal={comparison.right.volatilityAdjusted} />
                 </div>
+                <SignalHistoryChart analysis={comparison.right} />
                 <AnalysisSidebar analysis={comparison.right} />
               </div>
             </div>
@@ -762,6 +939,7 @@ export function QuantLensApp() {
           <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="grid gap-6">
               <AnalysisHero analysis={analysis} />
+              <SignalHistoryChart analysis={analysis} />
               <div className="grid gap-6 xl:grid-cols-3">
                 <SignalCard signal={analysis.momentum} />
                 <SignalCard signal={analysis.meanReversion} />

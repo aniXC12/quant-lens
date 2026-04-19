@@ -46,6 +46,22 @@ export type QuantLensAnalysis = {
   risk: string;
   thesis: string;
   sparkline: number[];
+  signalHistory: {
+    timestamp: number;
+    momentum: number;
+    meanReversion: number;
+    volatilityAdjusted: number;
+    recommendation: "Buy" | "Hold" | "Sell";
+    price: number;
+    forwardReturn10Day: number | null;
+  }[];
+  signalReliability: {
+    buySignals: number;
+    sellSignals: number;
+    averageBuyReturn10Day: number | null;
+    averageSellReturn10Day: number | null;
+    explanation: string;
+  };
   sectorContext: {
     sectorName: string;
     benchmarkSymbol: string;
@@ -105,6 +121,14 @@ function standardDeviation(values: number[]) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function averageOrNull(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return average(values);
 }
 
 function percentileLabel(score: number): SignalSummary["label"] {
@@ -264,6 +288,14 @@ function buildInstitutionalThesis({
   )}/10 conviction because the directional tape, the stock's distance from trend, and the risk-adjusted composite are not fighting each other in a major way. Momentum is ${momentum.label.toLowerCase()}, mean reversion is ${meanReversion.label.toLowerCase()}, and the volatility-adjusted read is ${volatilityAdjusted.label.toLowerCase()}, which together suggest the opportunity is more about disciplined positioning than heroic forecasting. The institutional takeaway is straightforward: respect the signal, size it to the volatility, and stay humble about how quickly the setup can change if price action or participation deteriorates.`;
 }
 
+function formatAverageReturn(value: number | null) {
+  if (value == null) {
+    return "N/A";
+  }
+
+  return formatPercent(value);
+}
+
 function buildSectorContextSummary({
   symbol,
   sectorName,
@@ -364,34 +396,29 @@ function buildComparisonSummary(
   )} conviction points. If you only wanted one expression of this pair today, the systematic read would rather own ${winner.symbol} than ${loser.symbol}.`;
 }
 
-export function analyzeQuantLensData(
-  quote: QuoteFundamentals,
-  history: PricePoint[],
-): QuantLensAnalysis {
-  if (history.length < 90) {
-    throw new Error("Not enough price history to compute signals.");
+function computeSignalSnapshot(closes: number[], volumes: number[], latestIndex: number) {
+  if (latestIndex < 59) {
+    throw new Error("Not enough history to compute signal snapshot.");
   }
 
-  const closes = history.map((point) => point.close);
-  const volumes = history.map((point) => point.volume);
-  const latestClose = closes.at(-1) ?? quote.price;
-  const trailing20 = closes.slice(-20);
-  const trailing60 = closes.slice(-60);
-  const trailing90 = closes.slice(-90);
+  const trailing20 = closes.slice(latestIndex - 19, latestIndex + 1);
+  const trailing60 = closes.slice(latestIndex - 59, latestIndex + 1);
+  const trailing90Start = Math.max(0, latestIndex - 89);
+  const trailing90 = closes.slice(trailing90Start, latestIndex + 1);
   const trailing20Avg = average(trailing20);
-  const trailingVolumeAvg = average(volumes.slice(-20));
-  const volumeRatio = trailingVolumeAvg === 0 ? 1 : (volumes.at(-1) ?? trailingVolumeAvg) / trailingVolumeAvg;
+  const trailingVolumeAvg = average(volumes.slice(latestIndex - 19, latestIndex + 1));
+  const latestClose = closes[latestIndex];
+  const latestVolume = volumes[latestIndex] ?? trailingVolumeAvg;
+  const volumeRatio = trailingVolumeAvg === 0 ? 1 : latestVolume / trailingVolumeAvg;
   const slope20 = trailing20[0] ? latestClose / trailing20[0] - 1 : 0;
   const slope60 = trailing60[0] ? latestClose / trailing60[0] - 1 : 0;
   const deviation = trailing20Avg === 0 ? 0 : latestClose / trailing20Avg - 1;
-
   const returns = trailing90.slice(1).map((close, index) => close / trailing90[index] - 1);
   const returnStd = standardDeviation(returns);
   const avgReturn = average(returns);
   const realizedVolatility = returnStd * Math.sqrt(252);
   const deviationZScore =
     returnStd === 0 ? 0 : (latestClose - trailing20Avg) / (trailing20Avg * returnStd);
-
   const momentumRaw = slope20 * 1.1 + slope60 * 0.6 + (volumeRatio - 1) * 0.18;
   const meanReversionRaw = -(deviation * 1.4) - deviationZScore * 0.08;
   const momentumScore = clamp(momentumRaw, -1, 1);
@@ -403,7 +430,6 @@ export function analyzeQuantLensData(
     -1,
     1,
   );
-
   const directionalAgreement =
     Math.sign(momentumScore || 0) === Math.sign(volatilityAdjustedScore || 0) ? 0.7 : 0.45;
   const convictionScore = clamp(
@@ -414,53 +440,146 @@ export function analyzeQuantLensData(
     0,
     10,
   );
-
   const recommendation: QuantLensAnalysis["recommendation"] =
     volatilityAdjustedScore >= 0.16 && convictionScore >= 5.4
       ? "Buy"
       : volatilityAdjustedScore <= -0.16 && convictionScore >= 5.4
         ? "Sell"
         : "Hold";
-
   const sharpeEstimate = clamp(
     returnStd === 0 ? 0 : (avgReturn / returnStd) * Math.sqrt(252),
     -3,
     3,
   );
 
+  return {
+    latestClose,
+    volumeRatio,
+    slope20,
+    slope60,
+    deviation,
+    deviationZScore,
+    realizedVolatility,
+    momentumScore,
+    meanReversionScore,
+    volatilityAdjustedScore,
+    convictionScore,
+    sharpeEstimate,
+    recommendation,
+  };
+}
+
+function buildSignalHistory(closes: number[], volumes: number[], timestamps: number[]) {
+  const history: QuantLensAnalysis["signalHistory"] = [];
+
+  for (let index = Math.max(59, closes.length - 90); index < closes.length; index += 1) {
+    const snapshot = computeSignalSnapshot(closes, volumes, index);
+    const forwardIndex = index + 10;
+    const forwardReturn10Day =
+      forwardIndex < closes.length ? closes[forwardIndex] / closes[index] - 1 : null;
+
+    history.push({
+      timestamp: timestamps[index],
+      momentum: snapshot.momentumScore,
+      meanReversion: snapshot.meanReversionScore,
+      volatilityAdjusted: snapshot.volatilityAdjustedScore,
+      recommendation: snapshot.recommendation,
+      price: closes[index],
+      forwardReturn10Day,
+    });
+  }
+
+  return history;
+}
+
+function buildSignalReliability(
+  symbol: string,
+  signalHistory: QuantLensAnalysis["signalHistory"],
+): QuantLensAnalysis["signalReliability"] {
+  const buyReturns = signalHistory
+    .filter((point) => point.recommendation === "Buy" && point.forwardReturn10Day != null)
+    .map((point) => point.forwardReturn10Day as number);
+  const sellReturns = signalHistory
+    .filter((point) => point.recommendation === "Sell" && point.forwardReturn10Day != null)
+    .map((point) => point.forwardReturn10Day as number);
+  const averageBuyReturn10Day = averageOrNull(buyReturns);
+  const averageSellReturn10Day = averageOrNull(sellReturns);
+
+  const explanation =
+    buyReturns.length === 0 && sellReturns.length === 0
+      ? `Over the recent 90-day window, ${symbol} did not generate many high-conviction trigger points, so the signal history is more useful as a regime map than as a hard backtest.`
+      : buyReturns.length > 0 && sellReturns.length > 0
+        ? `When the model flashed buy on ${symbol}, the next 10 trading days averaged ${formatAverageReturn(
+            averageBuyReturn10Day,
+          )}. When it flashed sell, the next 10 trading days averaged ${formatAverageReturn(
+            averageSellReturn10Day,
+          )}, which gives you a quick read on whether the signal has actually had bite instead of just looking elegant on a chart.`
+        : buyReturns.length > 0
+          ? `Buy triggers on ${symbol} averaged ${formatAverageReturn(
+              averageBuyReturn10Day,
+            )} over the next 10 trading days. There were not enough recent sell triggers to say much statistically, so treat the chart as a directional check rather than a complete scorecard.`
+          : `Sell triggers on ${symbol} averaged ${formatAverageReturn(
+              averageSellReturn10Day,
+            )} over the next 10 trading days. There were not enough recent buy triggers to say much statistically, so this is more about downside behavior than a full two-sided test.`;
+
+  return {
+    buySignals: buyReturns.length,
+    sellSignals: sellReturns.length,
+    averageBuyReturn10Day,
+    averageSellReturn10Day,
+    explanation,
+  };
+}
+
+export function analyzeQuantLensData(
+  quote: QuoteFundamentals,
+  history: PricePoint[],
+): QuantLensAnalysis {
+  if (history.length < 90) {
+    throw new Error("Not enough price history to compute signals.");
+  }
+
+  const closes = history.map((point) => point.close);
+  const volumes = history.map((point) => point.volume);
+  const timestamps = history.map((point) => point.timestamp);
+  const latestSnapshot = computeSignalSnapshot(closes, volumes, closes.length - 1);
+  const latestClose = latestSnapshot.latestClose;
+  const signalHistory = buildSignalHistory(closes, volumes, timestamps);
+  const signalReliability = buildSignalReliability(quote.symbol, signalHistory);
+
   const momentum: SignalSummary = {
     name: "Momentum",
-    score: momentumScore,
-    label: percentileLabel(momentumScore),
+    score: latestSnapshot.momentumScore,
+    label: percentileLabel(latestSnapshot.momentumScore),
     explanation: buildMomentumExplanation({
       symbol: quote.symbol,
-      slope20,
-      slope60,
-      volumeRatio,
-      score: momentumScore,
+      slope20: latestSnapshot.slope20,
+      slope60: latestSnapshot.slope60,
+      volumeRatio: latestSnapshot.volumeRatio,
+      score: latestSnapshot.momentumScore,
     }),
   };
 
   const meanReversion: SignalSummary = {
     name: "Mean Reversion",
-    score: meanReversionScore,
-    label: percentileLabel(meanReversionScore),
+    score: latestSnapshot.meanReversionScore,
+    label: percentileLabel(latestSnapshot.meanReversionScore),
     explanation: buildMeanReversionExplanation({
       symbol: quote.symbol,
-      deviation,
-      zScore: deviationZScore,
+      deviation: latestSnapshot.deviation,
+      zScore: latestSnapshot.deviationZScore,
     }),
   };
 
   const volatilityAdjusted: SignalSummary = {
     name: "Volatility-Adjusted Composite",
-    score: volatilityAdjustedScore,
-    label: percentileLabel(volatilityAdjustedScore),
+    score: latestSnapshot.volatilityAdjustedScore,
+    label: percentileLabel(latestSnapshot.volatilityAdjustedScore),
     explanation: buildVolatilityAdjustedExplanation({
-      momentumScore,
-      meanReversionScore,
-      realizedVolatility,
-      combinedScore: volatilityAdjustedScore,
+      momentumScore: latestSnapshot.momentumScore,
+      meanReversionScore: latestSnapshot.meanReversionScore,
+      realizedVolatility: latestSnapshot.realizedVolatility,
+      combinedScore: latestSnapshot.volatilityAdjustedScore,
     }),
   };
 
@@ -476,35 +595,37 @@ export function analyzeQuantLensData(
     trailingPe: quote.trailingPe,
     fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
     fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
-    convictionScore,
-    recommendation,
-    sharpeEstimate,
+    convictionScore: latestSnapshot.convictionScore,
+    recommendation: latestSnapshot.recommendation,
+    sharpeEstimate: latestSnapshot.sharpeEstimate,
     momentum,
     meanReversion,
     volatilityAdjusted,
     risk: buildRiskNarrative({
-      recommendation,
-      realizedVolatility,
-      priceVs20DayAverage: deviation,
-      volumeRatio,
+      recommendation: latestSnapshot.recommendation,
+      realizedVolatility: latestSnapshot.realizedVolatility,
+      priceVs20DayAverage: latestSnapshot.deviation,
+      volumeRatio: latestSnapshot.volumeRatio,
     }),
     thesis: buildInstitutionalThesis({
       companyName: quote.shortName,
-      recommendation,
-      convictionScore,
+      recommendation: latestSnapshot.recommendation,
+      convictionScore: latestSnapshot.convictionScore,
       momentum,
       meanReversion,
       volatilityAdjusted,
     }),
     sparkline: closes.slice(-30),
+    signalHistory,
+    signalReliability,
     sectorContext: null,
     diagnostics: {
-      momentumScore,
-      meanReversionScore,
-      volatilityAdjustedScore,
-      realizedVolatility,
-      priceVs20DayAverage: deviation,
-      volumeRatio,
+      momentumScore: latestSnapshot.momentumScore,
+      meanReversionScore: latestSnapshot.meanReversionScore,
+      volatilityAdjustedScore: latestSnapshot.volatilityAdjustedScore,
+      realizedVolatility: latestSnapshot.realizedVolatility,
+      priceVs20DayAverage: latestSnapshot.deviation,
+      volumeRatio: latestSnapshot.volumeRatio,
     },
   };
 }

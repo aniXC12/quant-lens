@@ -114,4 +114,25 @@ describe("analyzeQuantLensData", () => {
     expect(enriched.sectorContext?.sectorName).toBe("Technology");
     expect(enriched.sectorContext?.explanation).toContain("sector");
   });
+
+  it("builds signal history and reliability stats", () => {
+    const prices = [
+      ...Array.from({ length: 120 }, (_, index) => 80 + index * 0.55),
+      146,
+      143,
+      147,
+      149,
+      145,
+      151,
+      154,
+      152,
+      156,
+      159,
+    ];
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_000_000));
+
+    expect(analysis.signalHistory.length).toBeGreaterThan(20);
+    expect(analysis.signalHistory.at(-1)?.momentum).toBeTypeOf("number");
+    expect(analysis.signalReliability.explanation.length).toBeGreaterThan(20);
+  });
 });

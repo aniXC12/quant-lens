@@ -138,7 +138,7 @@ function parseQuote(symbol: string, data: YahooQuoteSummaryResponse): QuoteFunda
 async function fetchAnalysis(ticker: string): Promise<QuantLensAnalysis> {
   const [historyResponse, summaryResponse] = await Promise.all([
     fetchJson<YahooChartResponse>(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo&includePrePost=false`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y&includePrePost=false`,
     ),
     fetchJson<YahooQuoteSummaryResponse>(
       `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price,summaryDetail,assetProfile`,
