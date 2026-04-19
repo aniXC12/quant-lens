@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 import {
   analyzeQuantLensData,
+  compareQuantLensAnalyses,
   type PricePoint,
+  type QuantLensAnalysis,
   type QuoteFundamentals,
 } from "@/lib/quant-lens";
 
@@ -104,29 +106,50 @@ function parseQuote(symbol: string, data: YahooQuoteSummaryResponse): QuoteFunda
   };
 }
 
+async function fetchAnalysis(ticker: string): Promise<QuantLensAnalysis> {
+  const [historyResponse, summaryResponse] = await Promise.all([
+    fetchJson<YahooChartResponse>(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo&includePrePost=false`,
+    ),
+    fetchJson<YahooQuoteSummaryResponse>(
+      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price,summaryDetail`,
+    ),
+  ]);
+
+  const history = parseHistory(historyResponse);
+  const quote = parseQuote(ticker, summaryResponse);
+
+  return analyzeQuantLensData(quote, history);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawTicker = searchParams.get("ticker")?.trim();
+  const rawCompareTo = searchParams.get("compareTo")?.trim();
 
   if (!rawTicker) {
     return NextResponse.json({ error: "Please provide a stock ticker." }, { status: 400 });
   }
 
   const ticker = rawTicker.toUpperCase();
+  const compareTo = rawCompareTo?.toUpperCase();
 
   try {
-    const [historyResponse, summaryResponse] = await Promise.all([
-      fetchJson<YahooChartResponse>(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo&includePrePost=false`,
-      ),
-      fetchJson<YahooQuoteSummaryResponse>(
-        `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price,summaryDetail`,
-      ),
-    ]);
+    if (compareTo) {
+      if (compareTo === ticker) {
+        return NextResponse.json(
+          { error: "Please choose two different tickers for comparison." },
+          { status: 400 },
+        );
+      }
 
-    const history = parseHistory(historyResponse);
-    const quote = parseQuote(ticker, summaryResponse);
-    const analysis = analyzeQuantLensData(quote, history);
+      const [left, right] = await Promise.all([fetchAnalysis(ticker), fetchAnalysis(compareTo)]);
+      const comparison = compareQuantLensAnalyses(left, right);
+
+      return NextResponse.json({ analysis: left, comparison });
+    }
+
+    const analysis = await fetchAnalysis(ticker);
 
     return NextResponse.json({ analysis });
   } catch (error) {

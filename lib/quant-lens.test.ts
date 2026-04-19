@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeQuantLensData, type PricePoint, type QuoteFundamentals } from "@/lib/quant-lens";
+import {
+  analyzeQuantLensData,
+  compareQuantLensAnalyses,
+  type PricePoint,
+  type QuoteFundamentals,
+} from "@/lib/quant-lens";
 
 function makeHistory(prices: number[], baseVolume: number): PricePoint[] {
   return prices.map((close, index) => ({
@@ -66,5 +71,23 @@ describe("analyzeQuantLensData", () => {
     expect(() =>
       analyzeQuantLensData(quote, makeHistory(Array.from({ length: 20 }, () => 100), 500_000)),
     ).toThrow("Not enough price history");
+  });
+
+  it("compares two analyses and identifies the stronger setup", () => {
+    const stronger = analyzeQuantLensData(
+      { ...quote, symbol: "AAA", shortName: "Alpha Co" },
+      makeHistory(Array.from({ length: 100 }, (_, index) => 80 + index * 0.95), 1_300_000),
+    );
+    const weaker = analyzeQuantLensData(
+      { ...quote, symbol: "BBB", shortName: "Beta Co" },
+      makeHistory(Array.from({ length: 100 }, (_, index) => 130 - index * 0.5), 850_000),
+    );
+
+    const comparison = compareQuantLensAnalyses(stronger, weaker);
+
+    expect(comparison.winner.symbol).toBe("AAA");
+    expect(comparison.loser.symbol).toBe("BBB");
+    expect(comparison.convictionGap).toBeGreaterThanOrEqual(0);
+    expect(comparison.explanation).toContain("AAA");
   });
 });

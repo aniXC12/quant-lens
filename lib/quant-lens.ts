@@ -54,6 +54,22 @@ export type QuantLensAnalysis = {
   };
 };
 
+export type QuantLensComparison = {
+  left: QuantLensAnalysis;
+  right: QuantLensAnalysis;
+  winner: QuantLensAnalysis;
+  loser: QuantLensAnalysis;
+  convictionGap: number;
+  signalGaps: {
+    momentum: number;
+    meanReversion: number;
+    volatilityAdjusted: number;
+    sharpeEstimate: number;
+  };
+  explanation: string;
+  summary: string;
+};
+
 function average(values: number[]) {
   if (values.length === 0) {
     return 0;
@@ -235,6 +251,58 @@ function buildInstitutionalThesis({
   )}/10 conviction because the directional tape, the stock's distance from trend, and the risk-adjusted composite are not fighting each other in a major way. Momentum is ${momentum.label.toLowerCase()}, mean reversion is ${meanReversion.label.toLowerCase()}, and the volatility-adjusted read is ${volatilityAdjusted.label.toLowerCase()}, which together suggest the opportunity is more about disciplined positioning than heroic forecasting. The institutional takeaway is straightforward: respect the signal, size it to the volatility, and stay humble about how quickly the setup can change if price action or participation deteriorates.`;
 }
 
+function describeEdge(gap: number) {
+  if (gap >= 2) {
+    return "clear";
+  }
+
+  if (gap >= 0.9) {
+    return "moderate";
+  }
+
+  return "narrow";
+}
+
+function strongerSignalName(comparison: QuantLensComparison["signalGaps"]) {
+  const entries: Array<[string, number]> = [
+    ["momentum", Math.abs(comparison.momentum)],
+    ["mean reversion", Math.abs(comparison.meanReversion)],
+    ["volatility-adjusted composite", Math.abs(comparison.volatilityAdjusted)],
+    ["Sharpe estimate", Math.abs(comparison.sharpeEstimate)],
+  ];
+
+  entries.sort((left, right) => right[1] - left[1]);
+  return entries[0][0];
+}
+
+function buildComparisonExplanation(
+  winner: QuantLensAnalysis,
+  loser: QuantLensAnalysis,
+  convictionGap: number,
+  signalGaps: QuantLensComparison["signalGaps"],
+) {
+  const edge = describeEdge(convictionGap);
+  const biggestDriver = strongerSignalName(signalGaps);
+  const volatilityCall =
+    winner.diagnostics.realizedVolatility < loser.diagnostics.realizedVolatility
+      ? `${winner.symbol} is also trading with a cleaner volatility profile, which matters because a decent signal is worth more when it is not being drowned out by noise.`
+      : `${winner.symbol} wins even without the calmer tape, which tells you the raw signal strength is doing most of the work.`;
+
+  return `${winner.symbol} has the stronger quant case right now with a ${edge} ${convictionGap.toFixed(
+    1,
+  )}-point conviction edge over ${loser.symbol}. The biggest separator is ${biggestDriver}: ${winner.symbol} has a more favorable mix of momentum, stretch versus trend, and risk-adjusted follow-through, so the setup looks more investable rather than merely interesting. ${volatilityCall}`;
+}
+
+function buildComparisonSummary(
+  winner: QuantLensAnalysis,
+  loser: QuantLensAnalysis,
+  convictionGap: number,
+) {
+  return `${winner.companyName} is the stronger head-to-head idea over ${loser.companyName} by ${convictionGap.toFixed(
+    1,
+  )} conviction points. If you only wanted one expression of this pair today, the systematic read would rather own ${winner.symbol} than ${loser.symbol}.`;
+}
+
 export function analyzeQuantLensData(
   quote: QuoteFundamentals,
   history: PricePoint[],
@@ -375,5 +443,31 @@ export function analyzeQuantLensData(
       priceVs20DayAverage: deviation,
       volumeRatio,
     },
+  };
+}
+
+export function compareQuantLensAnalyses(
+  left: QuantLensAnalysis,
+  right: QuantLensAnalysis,
+): QuantLensComparison {
+  const winner = left.convictionScore >= right.convictionScore ? left : right;
+  const loser = winner.symbol === left.symbol ? right : left;
+  const convictionGap = Math.abs(left.convictionScore - right.convictionScore);
+  const signalGaps = {
+    momentum: left.momentum.score - right.momentum.score,
+    meanReversion: left.meanReversion.score - right.meanReversion.score,
+    volatilityAdjusted: left.volatilityAdjusted.score - right.volatilityAdjusted.score,
+    sharpeEstimate: left.sharpeEstimate - right.sharpeEstimate,
+  };
+
+  return {
+    left,
+    right,
+    winner,
+    loser,
+    convictionGap,
+    signalGaps,
+    explanation: buildComparisonExplanation(winner, loser, convictionGap, signalGaps),
+    summary: buildComparisonSummary(winner, loser, convictionGap),
   };
 }
