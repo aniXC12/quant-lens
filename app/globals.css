@@ -1,32 +1,34 @@
 @import "tailwindcss";
 
 :root {
-  --background: #03070d;
-  --background-alt: #07111f;
-  --background-glow: rgba(68, 173, 255, 0.14);
-  --background-glow-secondary: rgba(84, 255, 191, 0.08);
-  --background-glow-tertiary: rgba(151, 184, 255, 0.14);
-  --panel: rgba(12, 18, 28, 0.82);
-  --panel-strong: rgba(17, 26, 38, 0.92);
-  --panel-soft: rgba(147, 197, 253, 0.08);
-  --panel-soft-strong: rgba(147, 197, 253, 0.14);
-  --border: rgba(148, 163, 184, 0.14);
-  --border-strong: rgba(125, 211, 252, 0.28);
-  --text: #d8e0ef;
-  --text-strong: #ffffff;
-  --muted: #95a3bd;
-  --accent: #7dd3fc;
-  --accent-strong: #b7f0a1;
-  --accent-secondary: #9bb8ff;
-  --accent-soft: rgba(125, 211, 252, 0.12);
-  --graph-line: rgba(125, 211, 252, 0.12);
-  --graph-highlight: rgba(167, 243, 208, 0.78);
-  --graph-glow-soft: rgba(125, 211, 252, 0.16);
-  --graph-glow-strong: rgba(155, 184, 255, 0.22);
-  --grid-line: rgba(148, 163, 184, 0.08);
+  --background: #11100d;
+  --background-alt: #171512;
+  --background-warm: #1d1914;
+  --background-glow: rgba(221, 173, 111, 0.09);
+  --background-glow-secondary: rgba(145, 121, 95, 0.1);
+  --background-glow-tertiary: rgba(183, 154, 124, 0.08);
+  --panel: rgba(28, 24, 21, 0.72);
+  --panel-strong: rgba(34, 29, 25, 0.86);
+  --panel-soft: rgba(255, 255, 255, 0.035);
+  --panel-soft-strong: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(234, 177, 112, 0.18);
+  --text: #ebe4da;
+  --text-strong: #fffaf4;
+  --muted: #b6aa9c;
+  --accent: #f5a35c;
+  --accent-strong: #ffd2a8;
+  --accent-secondary: #f0c89e;
+  --accent-soft: rgba(245, 163, 92, 0.14);
+  --graph-line: rgba(245, 163, 92, 0.16);
+  --graph-highlight: rgba(255, 213, 165, 0.85);
+  --graph-glow-soft: rgba(245, 163, 92, 0.12);
+  --graph-glow-strong: rgba(244, 190, 131, 0.16);
+  --grid-line: rgba(255, 255, 255, 0.04);
   --shadow:
-    0 30px 80px rgba(0, 0, 0, 0.45),
-    0 10px 30px rgba(0, 0, 0, 0.22);
+    0 32px 80px rgba(0, 0, 0, 0.26),
+    0 8px 30px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 @theme inline {
@@ -42,18 +44,20 @@
 
 html {
   background: var(--background);
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, var(--background-glow), transparent 34%),
-    radial-gradient(circle at 84% 12%, var(--background-glow-secondary), transparent 28%),
-    radial-gradient(circle at 10% 92%, var(--background-glow-tertiary), transparent 24%),
-    linear-gradient(180deg, #07111f 0%, var(--background-alt) 52%, var(--background) 100%);
+    radial-gradient(circle at 14% 10%, var(--background-glow), transparent 28%),
+    radial-gradient(circle at 84% 14%, var(--background-glow-secondary), transparent 22%),
+    radial-gradient(circle at 50% 120%, var(--background-glow-tertiary), transparent 32%),
+    linear-gradient(180deg, #1f1a15 0%, var(--background-alt) 36%, var(--background) 100%);
   color: var(--text);
   font-family: var(--font-body), sans-serif;
+  letter-spacing: -0.01em;
 }
 
 body::before {
@@ -63,10 +67,10 @@ body::before {
   background-image:
     linear-gradient(var(--grid-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 56px 56px;
+  background-size: 76px 76px;
   content: "";
-  mask-image: radial-gradient(circle at center, black 48%, transparent 96%);
-  opacity: 0.65;
+  mask-image: radial-gradient(circle at center, black 42%, transparent 96%);
+  opacity: 0.38;
   pointer-events: none;
 }
 
@@ -106,18 +110,198 @@ input {
 .micro-label {
   font-family: var(--font-display), sans-serif;
   font-size: 0.72rem;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: rgba(241, 225, 206, 0.58);
 }
 
 .tag-button {
-  border: 1px solid var(--border);
-  background: var(--panel-soft);
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.035);
   color: var(--muted);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 30px rgba(0, 0, 0, 0.12);
 }
 
 .tag-button[data-active="true"] {
-  border-color: var(--border-strong);
-  background: var(--accent-soft);
+  border-color: transparent;
+  background: linear-gradient(180deg, rgba(245, 163, 92, 0.2), rgba(245, 163, 92, 0.1));
   color: var(--text-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 32px rgba(245, 163, 92, 0.12);
+}
+
+.ql-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.ql-shell::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at top left, rgba(244, 189, 126, 0.14), transparent 30%),
+    radial-gradient(circle at 85% 0%, rgba(140, 111, 80, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18%);
+  content: "";
+  pointer-events: none;
+}
+
+.ql-panel,
+.ql-soft-panel,
+.ql-hero-panel {
+  border: 1px solid transparent !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 22px 60px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(24px);
+}
+
+.ql-soft-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.016)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 18px 48px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.025) !important;
+}
+
+.ql-hero-panel {
+  background:
+    radial-gradient(circle at top right, rgba(245, 163, 92, 0.09), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 34px 90px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 0 120px rgba(245, 163, 92, 0.05) !important;
+}
+
+.ql-pill {
+  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.ql-input {
+  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text-strong) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 28px rgba(0, 0, 0, 0.1);
+}
+
+.ql-input::placeholder {
+  color: rgba(214, 200, 183, 0.56);
+}
+
+.ql-input:focus {
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(245, 163, 92, 0.28),
+    0 18px 40px rgba(245, 163, 92, 0.08);
+}
+
+.ql-action {
+  border: 1px solid transparent !important;
+  background: linear-gradient(180deg, #f5b47b, #f29b55) !important;
+  color: #23170f !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 239, 0.52),
+    0 20px 40px rgba(242, 155, 85, 0.22);
+}
+
+.ql-action-subtle {
+  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--muted) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.ql-signal-orb {
+  position: relative;
+  display: inline-flex;
+  height: 3.25rem;
+  width: 3.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.02));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 36px rgba(0, 0, 0, 0.18);
+}
+
+.ql-signal-orb::after {
+  position: absolute;
+  inset: -0.55rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(245, 163, 92, 0.12), transparent 64%);
+  content: "";
+  filter: blur(10px);
+  z-index: -1;
+}
+
+.ql-table {
+  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 20px 48px rgba(0, 0, 0, 0.14);
+}
+
+.ql-kicker {
+  color: rgba(255, 229, 199, 0.64);
+}
+
+.ql-body {
+  color: rgba(235, 228, 218, 0.88);
+}
+
+.ql-muted {
+  color: rgba(196, 182, 166, 0.7);
+}
+
+.ql-divider {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  height: 1px;
+  width: 100%;
+}
+
+.ql-data-chip {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.ql-accent-text {
+  color: var(--accent);
+}
+
+.ql-load-in {
+  animation: ql-fade-up 0.5s ease both;
+}
+
+@keyframes ql-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }

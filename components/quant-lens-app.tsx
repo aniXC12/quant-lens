@@ -25,6 +25,15 @@ type LeaderboardEntry = {
   error: string | null;
 };
 
+type FeatureLink = {
+  name: string;
+  description: string;
+  targetId: string;
+  mode?: Mode;
+  ticker?: string;
+  compareTickers?: [string, string];
+};
+
 const starterPairs = [
   ["NVDA", "AMD"],
   ["MSFT", "GOOGL"],
@@ -56,6 +65,114 @@ const TOP_SP500_TICKERS = [
 
 const WATCHLIST_LIMIT = 10;
 const WATCHLIST_STORAGE_KEY = "quant-lens-watchlist";
+
+const MARKETING_FEATURES: FeatureLink[] = [
+  {
+    name: "Single Name Analysis",
+    description: "Run the full Quant Lens stack on one stock and get a clean conviction-driven thesis in plain English.",
+    targetId: "app-workspace",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Head to Head Comparison",
+    description: "Put two names side by side and see which stock has the stronger quant case right now.",
+    targetId: "compare-workspace",
+    mode: "compare",
+    compareTickers: ["NVDA", "AMD"],
+  },
+  {
+    name: "Momentum Signal",
+    description: "Measures whether price strength is being supported by trend persistence and participation.",
+    targetId: "signal-momentum",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Mean Reversion Signal",
+    description: "Shows whether the stock has drifted too far from trend and is due for a reset.",
+    targetId: "signal-mean-reversion",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Volatility Adjusted Signal",
+    description: "Balances momentum and reversion while discounting noisy setups that look cleaner than they trade.",
+    targetId: "signal-volatility-adjusted",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Sector Context",
+    description: "Compares the stock’s setup to the broader sector so you can tell leadership from beta.",
+    targetId: "sector-context-card",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "90 Day Signal History Chart",
+    description: "Visualizes how the signals have behaved recently and where the model would have triggered buys or sells.",
+    targetId: "signal-history-chart",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Market Stress Test",
+    description: "Re-runs the thesis under a tougher volatility regime to see whether conviction holds up.",
+    targetId: "market-stress-test",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Earnings Catalyst Detector",
+    description: "Flags nearby earnings risk and explains whether the current setup is worth owning before the event.",
+    targetId: "earnings-catalyst",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Insider Activity Tracker",
+    description: "Reads recent executive buying and selling to see whether management is confirming or weakening the tape.",
+    targetId: "insider-activity",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Short Squeeze Probability",
+    description: "Combines short interest and momentum to estimate how likely a squeeze is in the near term.",
+    targetId: "short-squeeze-risk",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "News Sentiment Overlay",
+    description: "Scores the latest headlines and checks whether the news tape is aligned with the quant read.",
+    targetId: "news-sentiment",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Institutional Ownership Tracker",
+    description: "Shows whether large professional holders are leaning in or stepping back underneath the setup.",
+    targetId: "institutional-ownership",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Conviction Score",
+    description: "Synthesizes the full signal stack into a simple out-of-10 read on how compelling the trade is.",
+    targetId: "conviction-score",
+    mode: "single",
+    ticker: "NVDA",
+  },
+  {
+    name: "Sharpe Ratio Estimate",
+    description: "Estimates the quality of the return stream so you can judge edge, not just direction.",
+    targetId: "sharpe-ratio",
+    mode: "single",
+    ticker: "NVDA",
+  },
+];
 
 type AnalysisView = {
   convictionScore: number;
@@ -120,14 +237,312 @@ function scoreStyles(score: number) {
 
 function recommendationStyles(recommendation: QuantLensAnalysis["recommendation"]) {
   if (recommendation === "Buy") {
-    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+    return "ql-pill text-emerald-200";
   }
 
   if (recommendation === "Sell") {
-    return "border-rose-400/25 bg-rose-400/10 text-rose-200";
+    return "ql-pill text-rose-200";
   }
 
-  return "border-amber-300/25 bg-amber-300/10 text-amber-100";
+  return "ql-pill text-amber-100";
+}
+
+function SignalOrb({
+  score,
+  label,
+}: {
+  score: number;
+  label: string;
+}) {
+  const tone =
+    score > 0.12 ? "text-emerald-200" : score < -0.12 ? "text-rose-200" : "text-amber-100";
+
+  return (
+    <div className="flex items-center gap-4">
+      <div className="ql-signal-orb">
+        <div
+          className="h-7 w-7 rounded-full"
+          style={{
+            background:
+              score > 0.12
+                ? "linear-gradient(180deg, rgba(184,255,210,0.95), rgba(73,214,143,0.72))"
+                : score < -0.12
+                  ? "linear-gradient(180deg, rgba(255,206,206,0.95), rgba(239,113,113,0.72))"
+                  : "linear-gradient(180deg, rgba(255,232,192,0.94), rgba(227,181,102,0.72))",
+          }}
+        />
+      </div>
+      <div>
+        <p className="micro-label">{label}</p>
+        <p className={`mt-1 text-base font-medium ${tone}`}>{score.toFixed(2)}</p>
+      </div>
+    </div>
+  );
+}
+
+function LoadingSequence({ mode }: { mode: Mode }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const steps =
+    mode === "single"
+      ? [
+          "Pulling live price data",
+          "Computing momentum signal",
+          "Analyzing sector context",
+          "Building your thesis",
+        ]
+      : [
+          "Pulling live price data",
+          "Computing pairwise signals",
+          "Comparing conviction strength",
+          "Building your relative thesis",
+        ];
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % steps.length);
+    }, 850);
+
+    return () => window.clearInterval(interval);
+  }, [steps.length]);
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="ql-panel overflow-hidden rounded-[36px] px-8 py-8"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-6">
+        <div className="max-w-2xl">
+          <p className="micro-label ql-kicker">Analysis In Motion</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-white">
+            Building your read, step by step.
+          </h2>
+          <p className="mt-4 text-sm leading-8 ql-body">
+            Quant Lens is pulling live market inputs, translating the signal stack, and assembling the most relevant context before it writes the final thesis.
+          </p>
+        </div>
+        <div className="ql-signal-orb h-14 w-14 shrink-0">
+          <motion.div
+            animate={{ scale: [0.88, 1.08, 0.88], opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            className="h-5 w-5 rounded-full bg-[linear-gradient(180deg,#ffd7af,#f5a35c)]"
+          />
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-4 lg:grid-cols-4">
+        {steps.map((step, index) => {
+          const isActive = index <= activeIndex;
+
+          return (
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{
+                opacity: isActive ? 1 : 0.38,
+                y: 0,
+                scale: isActive ? 1 : 0.985,
+              }}
+              transition={{ duration: 0.45, delay: index * 0.08 }}
+              className="ql-soft-panel rounded-[26px] px-5 py-5"
+            >
+              <div className="flex items-center gap-4">
+                <div className="ql-signal-orb h-10 w-10 text-sm text-[#2b170b]">
+                  <motion.div
+                    animate={{
+                      scale: isActive ? [0.92, 1.06, 0.92] : 1,
+                      opacity: isActive ? [0.7, 1, 0.7] : 0.45,
+                    }}
+                    transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                    className="h-3 w-3 rounded-full bg-[linear-gradient(180deg,#ffd7af,#f5a35c)]"
+                  />
+                </div>
+                <div>
+                  <p className="micro-label">{`Step ${index + 1}`}</p>
+                  <p className="mt-1 text-sm font-medium leading-7 text-white">{step}</p>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </motion.section>
+  );
+}
+
+function scrollToSection(sectionId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    document.getElementById(sectionId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+}
+
+function MarketingHero({ onLaunch }: { onLaunch: (feature: FeatureLink) => void }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.65 }}
+      className="ql-hero-panel relative overflow-hidden rounded-[44px] px-8 py-18 sm:px-12 lg:px-16 lg:py-24"
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,163,92,0.14),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(255,232,205,0.08),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent_28%)]" />
+      </div>
+      <div className="relative z-10 max-w-4xl">
+        <p className="micro-label ql-kicker">Quant Lens</p>
+        <h1 className="mt-5 max-w-4xl text-5xl font-semibold tracking-[-0.09em] text-white sm:text-6xl lg:text-[5.3rem] lg:leading-[0.92]">
+          Institutional signal intelligence for the rest of the market.
+        </h1>
+        <p className="mt-6 max-w-2xl text-lg leading-9 ql-body">
+          Institutional quant signals translated into plain English for retail investors
+        </p>
+        <div className="mt-10 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => onLaunch(MARKETING_FEATURES[0])}
+            className="ql-action rounded-full px-7 py-4 text-sm font-semibold uppercase tracking-[0.18em] transition hover:brightness-110"
+          >
+            Run Your First Analysis
+          </button>
+          <p className="text-sm ql-muted">
+            Live market data, plain-English thesis, and disciplined timing context in one read.
+          </p>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+function MarketingFeatures({ onLaunch }: { onLaunch: (feature: FeatureLink) => void }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.18 }}
+      transition={{ duration: 0.55 }}
+      className="grid gap-8"
+    >
+      <div className="max-w-3xl">
+        <p className="micro-label ql-kicker">Features</p>
+        <h2 className="mt-3 text-4xl font-semibold tracking-[-0.07em] text-white sm:text-5xl">
+          Every major workflow, clearly surfaced.
+        </h2>
+        <p className="mt-4 text-base leading-8 ql-body">
+          Explore the full Quant Lens product surface, then jump directly into the exact analysis feature you want to try.
+        </p>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        {MARKETING_FEATURES.map((feature, index) => (
+          <motion.article
+            key={feature.name}
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.14 }}
+            transition={{ duration: 0.45, delay: index * 0.015 }}
+            className="ql-panel rounded-[30px] p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="max-w-[18rem]">
+                <p className="micro-label ql-kicker">Feature</p>
+                <h3 className="mt-3 text-2xl font-semibold tracking-[-0.05em] text-white">
+                  {feature.name}
+                </h3>
+              </div>
+              <div className="ql-signal-orb h-11 w-11 text-sm text-[#2b170b]">
+                {index + 1}
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-8 ql-body">{feature.description}</p>
+            <button
+              type="button"
+              onClick={() => onLaunch(feature)}
+              className="ql-action-subtle mt-6 rounded-full px-4 py-2 text-xs font-medium uppercase tracking-[0.2em] transition hover:text-[#ffd3a8]"
+            >
+              Open Feature
+            </button>
+          </motion.article>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function HowItWorksSection() {
+  const steps = [
+    ["01", "Paste a ticker", "Start with any stock you care about, or use one of the guided example names."],
+    ["02", "Run the signals", "Quant Lens pulls live market data and computes the momentum, reversion, and risk-adjusted stack."],
+    ["03", "Read the thesis", "Get a plain-English explanation of conviction, timing, catalyst risk, and what matters most now."],
+  ];
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.18 }}
+      transition={{ duration: 0.55 }}
+      className="ql-panel rounded-[40px] px-8 py-10 sm:px-10"
+    >
+      <div className="max-w-3xl">
+        <p className="micro-label ql-kicker">How It Works</p>
+        <h2 className="mt-3 text-4xl font-semibold tracking-[-0.07em] text-white sm:text-5xl">
+          Three steps from ticker to thesis.
+        </h2>
+      </div>
+      <div className="mt-8 grid gap-5 lg:grid-cols-3">
+        {steps.map(([number, title, body], index) => (
+          <motion.div
+            key={title}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.16 }}
+            transition={{ duration: 0.45, delay: index * 0.06 }}
+            className="ql-soft-panel rounded-[28px] p-6"
+          >
+            <p className="text-sm font-medium uppercase tracking-[0.22em] ql-accent-text">{number}</p>
+            <h3 className="mt-3 text-2xl font-semibold tracking-[-0.05em] text-white">{title}</h3>
+            <p className="mt-4 text-sm leading-8 ql-body">{body}</p>
+          </motion.div>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function SocialProofSection() {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+      transition={{ duration: 0.55 }}
+      className="ql-panel rounded-[40px] px-8 py-10 sm:px-10"
+    >
+      <p className="micro-label ql-kicker">Signal Logic</p>
+      <h2 className="mt-3 max-w-4xl text-4xl font-semibold tracking-[-0.07em] text-white sm:text-5xl">
+        Built around the same style of signal logic used in strategies that achieved Sharpe ratios above 1.7 at a top quantitative hedge fund.
+      </h2>
+      <p className="mt-5 max-w-3xl text-base leading-8 ql-body">
+        The point is not to imitate institutional mystique. It is to make disciplined signal interpretation legible, calm, and useful for investors who want to think more clearly about what the market is pricing in.
+      </p>
+    </motion.section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="flex flex-col gap-3 border-t border-white/6 py-8">
+      <p className="text-xl font-semibold tracking-[-0.04em] text-white">Quant Lens</p>
+      <p className="text-sm ql-muted">Institutional signal reading, made intelligible.</p>
+    </footer>
+  );
 }
 
 function Sparkline({ values }: { values: number[] }) {
@@ -169,7 +584,13 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
+function SignalHistoryChart({
+  analysis,
+  sectionId,
+}: {
+  analysis: QuantLensAnalysis;
+  sectionId?: string;
+}) {
   const points = analysis.signalHistory;
   const bounds = useMemo(() => {
     const values = points.flatMap((point) => [point.momentum, point.meanReversion]);
@@ -209,30 +630,31 @@ function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.08 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      id={sectionId}
+      className="ql-soft-panel rounded-[34px] p-8"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Signal History</p>
-          <h3 className="mt-2 text-2xl font-semibold text-white">90-day signal tape</h3>
+          <p className="micro-label ql-kicker">Signal History</p>
+          <h3 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white">90-day signal tape</h3>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.2em]">
-          <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-cyan-100">
+        <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em]">
+          <span className="ql-data-chip px-3 py-1 text-[#f4d2ad]">
             Momentum
           </span>
-          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-amber-100">
+          <span className="ql-data-chip px-3 py-1 text-[#e9c59b]">
             Mean reversion
           </span>
-          <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-emerald-100">
+          <span className="ql-data-chip px-3 py-1 text-emerald-200">
             Buy trigger
           </span>
-          <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-rose-100">
+          <span className="ql-data-chip px-3 py-1 text-rose-200">
             Sell trigger
           </span>
         </div>
       </div>
 
-      <div className="mt-5 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,18,31,0.85),rgba(5,10,18,0.72))] p-4">
+      <div className="ql-soft-panel mt-8 rounded-[28px] p-5">
         <svg viewBox="0 0 100 100" className="h-72 w-full overflow-visible">
           {[0, 25, 50, 75, 100].map((line) => (
             <line
@@ -299,12 +721,12 @@ function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-            <p className="micro-label text-[#7d8597]">Buy triggers</p>
+          <div className="ql-soft-panel rounded-[26px] p-5">
+            <p className="micro-label">Buy triggers</p>
             <p className="mt-2 text-3xl font-semibold text-white">
               {analysis.signalReliability.buySignals}
             </p>
-            <p className="mt-2 text-sm text-[#aeb9cf]">
+            <p className="mt-3 text-sm ql-muted">
               Avg next 10D return{" "}
               <span className={scoreStyles(analysis.signalReliability.averageBuyReturn10Day ?? 0)}>
                 {analysis.signalReliability.averageBuyReturn10Day == null
@@ -315,12 +737,12 @@ function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
               </span>
             </p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-            <p className="micro-label text-[#7d8597]">Sell triggers</p>
+          <div className="ql-soft-panel rounded-[26px] p-5">
+            <p className="micro-label">Sell triggers</p>
             <p className="mt-2 text-3xl font-semibold text-white">
               {analysis.signalReliability.sellSignals}
             </p>
-            <p className="mt-2 text-sm text-[#aeb9cf]">
+            <p className="mt-3 text-sm ql-muted">
               Avg next 10D return{" "}
               <span className={scoreStyles(-(analysis.signalReliability.averageSellReturn10Day ?? 0))}>
                 {analysis.signalReliability.averageSellReturn10Day == null
@@ -333,9 +755,9 @@ function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Reliability Read</p>
-          <p className="mt-3 text-sm leading-8 text-[#d2d8e5]">
+        <div className="ql-soft-panel rounded-[26px] p-5">
+          <p className="micro-label">Reliability Read</p>
+          <p className="mt-4 text-sm leading-8 ql-body">
             {analysis.signalReliability.explanation}
           </p>
         </div>
@@ -347,7 +769,7 @@ function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
 function ScoreBadge({ recommendation }: { recommendation: QuantLensAnalysis["recommendation"] }) {
   return (
     <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.24em] uppercase ${recommendationStyles(
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium tracking-[0.24em] uppercase ${recommendationStyles(
         recommendation,
       )}`}
     >
@@ -385,39 +807,39 @@ function WatchlistCard({
           : "text-amber-100";
 
   return (
-    <div className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5">
+    <div className="ql-soft-panel ql-load-in rounded-[30px] p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="micro-label text-[#7d8597]">Watchlist</p>
-          <h3 className="mt-2 text-2xl font-semibold text-white">{entry.ticker}</h3>
-          <p className="mt-1 text-sm text-[#8fa1be]">
+          <p className="micro-label">Watchlist</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">{entry.ticker}</h3>
+          <p className="mt-1 text-sm ql-muted">
             {analysis?.companyName ?? entry.error ?? "Refreshing live scorecard"}
           </p>
         </div>
         <button
           type="button"
           onClick={() => onRemove(entry.ticker)}
-          className="rounded-full border border-white/10 px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] text-[#91a1ba] transition hover:border-rose-300/30 hover:text-rose-100"
+          className="ql-action-subtle rounded-full px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] transition hover:text-rose-100"
         >
           Remove
         </button>
       </div>
 
       {entry.error ? (
-        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+        <div className="ql-soft-panel mt-4 rounded-[24px] px-4 py-3 text-sm text-rose-100">
           {entry.error}
         </div>
       ) : (
         <>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-              <p className="micro-label text-[#7d8597]">Conviction</p>
+            <div className="ql-soft-panel rounded-[24px] p-4">
+              <p className="micro-label">Conviction</p>
               <p className="mt-2 text-2xl font-semibold text-white">
                 {analysis ? analysis.convictionScore.toFixed(1) : "--"}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-              <p className="micro-label text-[#7d8597]">Call</p>
+            <div className="ql-soft-panel rounded-[24px] p-4">
+              <p className="micro-label">Call</p>
               <div className="mt-2">
                 {analysis ? (
                   <span
@@ -432,14 +854,14 @@ function WatchlistCard({
                 )}
               </div>
             </div>
-            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-              <p className="micro-label text-[#7d8597]">Momentum</p>
+            <div className="ql-soft-panel rounded-[24px] p-4">
+              <p className="micro-label">Momentum</p>
               <p className={`mt-2 text-2xl font-semibold ${momentumTone}`}>{momentumDirection}</p>
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm">
-            <span className="text-[#95a3bd]">
+          <div className="ql-soft-panel mt-5 flex items-center justify-between gap-4 rounded-[24px] px-4 py-3 text-sm">
+            <span className="ql-muted">
               {analysis
                 ? `${analysis.price.toFixed(2)} ${analysis.currency} | ${analysis.momentum.label} tape`
                 : "Pulling live quote and signal stack"}
@@ -447,7 +869,7 @@ function WatchlistCard({
             <button
               type="button"
               onClick={() => onOpen(entry.ticker)}
-              className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] text-cyan-100 transition hover:brightness-110"
+              className="ql-action-subtle rounded-full px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] text-[#ffd3a8] transition hover:brightness-110"
             >
               Open
             </button>
@@ -482,20 +904,20 @@ function WatchlistDashboard({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.05 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      className="ql-panel rounded-[36px] p-8"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Watchlist Dashboard</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
+          <p className="micro-label ql-kicker">Watchlist Dashboard</p>
+          <h2 className="mt-3 text-4xl font-semibold tracking-[-0.06em] text-white">
             Live mini scorecards
           </h2>
-          <p className="mt-3 max-w-3xl text-sm leading-8 text-[#b8c3d8]">
+          <p className="mt-4 max-w-3xl text-sm leading-8 ql-body">
             Save up to 10 names and keep a live read on conviction, recommendation, and momentum direction without running each one manually.
           </p>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-right">
-          <p className="micro-label text-[#7d8597]">Capacity</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="micro-label">Capacity</p>
           <p className="mt-1 text-2xl font-semibold text-white">
             {entries.length}/{WATCHLIST_LIMIT}
           </p>
@@ -507,24 +929,24 @@ function WatchlistDashboard({
           value={watchlistInput}
           onChange={(event) => onWatchlistInputChange(event.target.value.toUpperCase())}
           placeholder="Add ticker to watchlist"
-          className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
+          className="ql-input flex-1 rounded-[24px] px-5 py-4 text-base transition"
         />
         <button
           type="button"
           onClick={() => onAddTicker(watchlistInput)}
           disabled={remainingSlots === 0}
-          className="rounded-2xl bg-[linear-gradient(135deg,#9fe8ff_0%,#6ed3cf_45%,#7393ff_100%)] px-6 py-4 text-sm font-semibold tracking-[0.18em] text-slate-950 uppercase transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          className="ql-action rounded-[24px] px-6 py-4 text-sm font-semibold tracking-[0.18em] uppercase transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Add To Watchlist
         </button>
       </div>
 
       {watchlistError ? (
-        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+        <div className="ql-soft-panel mt-4 rounded-[24px] px-4 py-3 text-sm text-rose-100">
           {watchlistError}
         </div>
       ) : (
-        <p className="mt-4 text-sm text-[#8fa1be]">
+        <p className="mt-4 text-sm ql-muted">
           {remainingSlots > 0
             ? `${remainingSlots} open slot${remainingSlots === 1 ? "" : "s"} left.`
             : "Watchlist is full. Remove a ticker to add another one."}
@@ -532,7 +954,7 @@ function WatchlistDashboard({
       )}
 
       {entries.length === 0 ? (
-        <div className="mt-5 rounded-[28px] border border-dashed border-white/12 bg-black/10 px-5 py-8 text-sm leading-8 text-[#b8c3d8]">
+        <div className="ql-soft-panel mt-5 rounded-[28px] px-6 py-9 text-sm leading-8 ql-body">
           Start with a few liquid names you care about. Quant Lens will keep a fresh mini scorecard on each one so you can spot changing conviction faster than running one-off searches all day.
         </div>
       ) : (
@@ -575,15 +997,15 @@ function MarketLeaderboard({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.08 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      className="ql-panel rounded-[36px] p-8"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Market Leaderboard</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
+          <p className="micro-label ql-kicker">Market Leaderboard</p>
+          <h2 className="mt-3 text-4xl font-semibold tracking-[-0.06em] text-white">
             Top 20 S&amp;P 500 conviction ranks
           </h2>
-          <p className="mt-3 max-w-3xl text-sm leading-8 text-[#b8c3d8]">
+          <p className="mt-4 max-w-3xl text-sm leading-8 ql-body">
             Quant Lens automatically runs the signal stack across a top-tier S&amp;P 500 basket and ranks the names from strongest to weakest by current conviction.
           </p>
         </div>
@@ -591,20 +1013,20 @@ function MarketLeaderboard({
           type="button"
           onClick={onRefresh}
           disabled={isLoading}
-          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.24em] text-[#9aa7bf] transition hover:border-cyan-300/30 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-60"
+          className="ql-action-subtle rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] transition hover:text-[#ffd3a8] disabled:cursor-wait disabled:opacity-60"
         >
           {isLoading ? "Refreshing" : "Refresh Board"}
         </button>
       </div>
 
       {error ? (
-        <div className="mt-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+        <div className="ql-soft-panel mt-5 rounded-[24px] px-4 py-3 text-sm text-rose-100">
           {error}
         </div>
       ) : null}
 
-      <div className="mt-5 overflow-hidden rounded-[28px] border border-white/8">
-        <div className="grid grid-cols-[0.45fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr] bg-white/[0.04] px-4 py-3 text-[0.68rem] uppercase tracking-[0.22em] text-[#8391aa]">
+      <div className="ql-table mt-6 overflow-hidden rounded-[28px]">
+        <div className="grid grid-cols-[0.45fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr] px-5 py-4 text-[0.68rem] uppercase tracking-[0.22em] text-[#9e9285]">
           <span>Rank</span>
           <span>Ticker</span>
           <span>Company</span>
@@ -630,7 +1052,7 @@ function MarketLeaderboard({
               key={entry.ticker}
               type="button"
               onClick={() => onOpenTicker(entry.ticker)}
-              className="grid w-full grid-cols-[0.45fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr] border-t border-white/8 px-4 py-4 text-left text-sm transition hover:bg-white/[0.03]"
+              className="grid w-full grid-cols-[0.45fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr] border-t border-white/5 px-5 py-4 text-left text-sm transition hover:bg-white/[0.025]"
             >
               <span className="text-[#8fa1be]">{index + 1}</span>
               <span className="font-medium text-white">{entry.ticker}</span>
@@ -661,34 +1083,36 @@ function MarketLeaderboard({
         })}
       </div>
 
-      <p className="mt-4 text-sm leading-7 text-[#8fa1be]">
+      <p className="mt-5 text-sm leading-8 ql-muted">
         Universe note: this board uses a curated top-20 S&amp;P 500 large-cap basket for a fast live snapshot of where the strongest institutional-looking setups are clustering right now.
       </p>
     </motion.section>
   );
 }
 
-function SignalCard({ signal }: { signal: AnalysisView["momentum"] }) {
+function SignalCard({
+  signal,
+  sectionId,
+}: {
+  signal: AnalysisView["momentum"];
+  sectionId?: string;
+}) {
   return (
     <motion.article
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
-      className="rounded-[28px] border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+      id={sectionId}
+      className="ql-soft-panel ql-load-in rounded-[30px] p-6"
     >
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">{signal.name}</p>
-          <h3 className="mt-2 text-xl font-semibold text-white">{signal.label}</h3>
+          <p className="micro-label">{signal.name}</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">{signal.label}</h3>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Signal</p>
-          <p className={`mt-1 text-2xl font-semibold ${scoreStyles(signal.score)}`}>
-            {signal.score.toFixed(2)}
-          </p>
-        </div>
+        <SignalOrb score={signal.score} label="Signal" />
       </div>
-      <p className="text-sm leading-7 text-[#c6cbda]">{signal.explanation}</p>
+      <p className="text-sm leading-8 ql-body">{signal.explanation}</p>
     </motion.article>
   );
 }
@@ -707,19 +1131,19 @@ function AnalysisHero({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
-      className="grid gap-5 rounded-[32px] border border-white/8 bg-white/[0.03] p-6 lg:grid-cols-[1fr_320px]"
+      className="ql-hero-panel ql-load-in grid gap-8 rounded-[36px] p-8 lg:grid-cols-[1fr_360px]"
     >
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-3xl font-semibold tracking-[-0.04em] text-white">
+          <h2 className="text-4xl font-semibold tracking-[-0.06em] text-white">
             {analysis.companyName}
           </h2>
-          <div className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#9aa7bf]">
+          <div className="ql-pill rounded-full px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#d3c2b2]">
             {analysis.symbol}
           </div>
           <ScoreBadge recommendation={current.recommendation} />
           {stressMode ? (
-            <span className="inline-flex rounded-full border border-rose-300/25 bg-rose-300/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-rose-100">
+            <span className="ql-pill inline-flex rounded-full px-3 py-1 text-xs uppercase tracking-[0.22em] text-rose-100">
               Stress Mode
             </span>
           ) : null}
@@ -727,7 +1151,7 @@ function AnalysisHero({
 
         <div className="flex flex-wrap items-end gap-4">
           <div>
-            <p className="text-4xl font-semibold text-white">
+            <p className="text-5xl font-semibold tracking-[-0.06em] text-white">
               {formatCurrency(analysis.price, analysis.currency)}
             </p>
             <p
@@ -739,28 +1163,28 @@ function AnalysisHero({
               {(analysis.changePercent * 100).toFixed(2)}% today
             </p>
           </div>
-          <div className="text-sm text-[#95a3bd]">
+          <div className="text-sm ql-muted">
             <p>{analysis.exchange}</p>
             <p>Live data via Yahoo Finance</p>
           </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-            <p className="micro-label text-[#7d8597]">Conviction</p>
+          <div id="conviction-score" className="ql-soft-panel rounded-[26px] p-5">
+            <p className="micro-label">Conviction</p>
             <p className="mt-2 text-3xl font-semibold text-white">
               {current.convictionScore.toFixed(1)}
               <span className="text-lg text-[#8f9bb2]">/10</span>
             </p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-            <p className="micro-label text-[#7d8597]">Sharpe Est.</p>
+          <div id="sharpe-ratio" className="ql-soft-panel rounded-[26px] p-5">
+            <p className="micro-label">Sharpe Est.</p>
             <p className="mt-2 text-3xl font-semibold text-white">
               {current.sharpeEstimate.toFixed(2)}
             </p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-            <p className="micro-label text-[#7d8597]">Market Cap</p>
+          <div className="ql-soft-panel rounded-[26px] p-5">
+            <p className="micro-label">Market Cap</p>
             <p className="mt-2 text-3xl font-semibold text-white">
               {formatCompactNumber(analysis.marketCap)}
             </p>
@@ -768,25 +1192,25 @@ function AnalysisHero({
         </div>
       </div>
 
-      <div className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,18,31,0.92),rgba(5,10,18,0.78))] p-5">
+      <div className="ql-soft-panel rounded-[30px] p-6">
         <div className="flex items-center justify-between">
-          <p className="micro-label text-[#7d8597]">30-Day Tape</p>
-          <p className="text-xs text-[#9aa7bf]">Recent close</p>
+          <p className="micro-label">30-Day Tape</p>
+          <p className="text-xs ql-muted">Recent close</p>
         </div>
         <div className="mt-4">
           <Sparkline values={analysis.sparkline} />
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-            <p className="text-[#8593ac]">52W Range</p>
+          <div className="ql-soft-panel rounded-[22px] p-4">
+            <p className="ql-muted">52W Range</p>
             <p className="mt-1 text-white">
               {analysis.fiftyTwoWeekLow && analysis.fiftyTwoWeekHigh
                 ? `${formatCurrency(analysis.fiftyTwoWeekLow, analysis.currency)} - ${formatCurrency(analysis.fiftyTwoWeekHigh, analysis.currency)}`
                 : "N/A"}
             </p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-            <p className="text-[#8593ac]">Trailing P/E</p>
+          <div className="ql-soft-panel rounded-[22px] p-4">
+            <p className="ql-muted">Trailing P/E</p>
             <p className="mt-1 text-white">
               {analysis.trailingPe ? analysis.trailingPe.toFixed(1) : "N/A"}
             </p>
@@ -863,15 +1287,15 @@ function SignalComparisonTable({
   ];
 
   return (
-    <div className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
+    <div className="ql-panel rounded-[34px] p-8">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Head To Head</p>
-          <h3 className="mt-2 text-2xl font-semibold text-white">
+          <p className="micro-label ql-kicker">Head To Head</p>
+          <h3 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white">
             {stressMode ? "Stress signal comparison" : "Signal comparison"}
           </h3>
         </div>
-        <div className="text-right text-sm text-[#a6b3ca]">
+        <div className="text-right text-sm ql-muted">
           <p>{comparison.left.symbol} vs {comparison.right.symbol}</p>
           <p>
             {(stressMode ? comparison.stressTest.winnerSymbol : comparison.winner.symbol)} leads by{" "}
@@ -880,8 +1304,8 @@ function SignalComparisonTable({
         </div>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-3xl border border-white/8">
-        <div className="grid grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr] bg-white/[0.04] px-4 py-3 text-xs uppercase tracking-[0.22em] text-[#8391aa]">
+      <div className="ql-table mt-6 overflow-hidden rounded-[30px]">
+        <div className="grid grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr] px-5 py-4 text-xs uppercase tracking-[0.22em] text-[#9d9286]">
           <span>Signal</span>
           <span>{comparison.left.symbol}</span>
           <span>{comparison.right.symbol}</span>
@@ -898,7 +1322,7 @@ function SignalComparisonTable({
           return (
             <div
               key={row.label}
-              className="grid grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr] border-t border-white/8 px-4 py-4 text-sm"
+              className="grid grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr] border-t border-white/5 px-5 py-4 text-sm"
             >
               <span className="text-[#d9deeb]">{row.label}</span>
               <span className={scoreStyles(row.left)}>{row.left.toFixed(2)}</span>
@@ -918,24 +1342,25 @@ function StressCard({ analysis }: { analysis: QuantLensAnalysis }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="rounded-[32px] border border-rose-300/12 bg-[linear-gradient(180deg,rgba(251,113,133,0.06),rgba(255,255,255,0.03))] p-6"
+      id="market-stress-test"
+      className="ql-soft-panel rounded-[32px] p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Market Stress Test</p>
+          <p className="micro-label">Market Stress Test</p>
           <h3 className="mt-2 text-2xl font-semibold text-white">20% drawdown scenario</h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Conviction Delta</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Conviction Delta</p>
           <p className={`mt-1 text-xl font-semibold ${scoreStyles(analysis.stressTest.convictionDelta)}`}>
             {analysis.stressTest.convictionDelta >= 0 ? "+" : ""}
             {analysis.stressTest.convictionDelta.toFixed(1)}
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{analysis.stressTest.explanation}</p>
-      <p className="mt-4 text-sm leading-8 text-[#bfc8d9]">{analysis.stressTest.thesisShift}</p>
-      <div className="mt-5 rounded-2xl border border-white/8 bg-black/10 p-4 text-sm text-[#d8deea]">
+      <p className="mt-4 text-sm leading-8 ql-body">{analysis.stressTest.explanation}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{analysis.stressTest.thesisShift}</p>
+      <div className="ql-soft-panel mt-5 rounded-[24px] p-4 text-sm ql-body">
         {analysis.stressTest.holdsUp
           ? "The conviction score mostly holds up under stress. This thesis looks more robust than fragile."
           : "The conviction score does not hold up especially well under stress. This thesis is more sensitive to regime change than the live tape suggests."}
@@ -951,10 +1376,11 @@ function EarningsCatalystCard({ analysis }: { analysis: QuantLensAnalysis }) {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        id="earnings-catalyst"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Earnings Catalyst</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+        <p className="micro-label">Earnings Catalyst</p>
+        <p className="mt-4 text-sm leading-8 ql-body">
           An upcoming earnings date was not available for this ticker, so there is no clean event
           risk read to layer on top of the quant setup.
         </p>
@@ -972,37 +1398,38 @@ function EarningsCatalystCard({ analysis }: { analysis: QuantLensAnalysis }) {
   const shell =
     earningsCatalyst.hasUpcomingEarnings
       ? "rounded-[32px] border border-amber-300/16 bg-[linear-gradient(180deg,rgba(251,191,36,0.08),rgba(255,255,255,0.03))] p-6"
-      : "rounded-[32px] border border-white/8 bg-white/[0.03] p-6";
+      : "rounded-[32px] p-6";
 
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className={shell}
+      id="earnings-catalyst"
+      className={`ql-soft-panel ${shell}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Earnings Catalyst</p>
+          <p className="micro-label">Earnings Catalyst</p>
           <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
             {earningsCatalyst.hasUpcomingEarnings ? "Event In View" : "No Near-Term Event"}
           </h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Risk</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Risk</p>
           <p className={`mt-1 text-lg font-semibold ${tone}`}>{earningsCatalyst.riskLevel}</p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{earningsCatalyst.explanation}</p>
+      <p className="mt-4 text-sm leading-8 ql-body">{earningsCatalyst.explanation}</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Next Earnings</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Next Earnings</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {formatEventDate(earningsCatalyst.nextEarningsDate)}
           </p>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Days Out</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Days Out</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {earningsCatalyst.daysUntilEarnings == null
               ? "N/A"
@@ -1010,7 +1437,7 @@ function EarningsCatalystCard({ analysis }: { analysis: QuantLensAnalysis }) {
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{earningsCatalyst.summary}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{earningsCatalyst.summary}</p>
     </motion.section>
   );
 }
@@ -1035,22 +1462,22 @@ function TradeTimingCard({ analysis }: { analysis: QuantLensAnalysis }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      className="ql-soft-panel rounded-[32px] p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Trade Timing</p>
+          <p className="micro-label">Trade Timing</p>
           <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
             {tradeTiming.score.toFixed(1)}/10
           </h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Read</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Read</p>
           <p className={`mt-1 text-lg font-semibold ${verdictTone}`}>{tradeTiming.verdict}</p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{tradeTiming.explanation}</p>
-      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{tradeTiming.summary}</p>
+      <p className="mt-4 text-sm leading-8 ql-body">{tradeTiming.explanation}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{tradeTiming.summary}</p>
     </motion.section>
   );
 }
@@ -1062,10 +1489,11 @@ function InsiderActivityCard({ analysis }: { analysis: QuantLensAnalysis }) {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        id="insider-activity"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Insider Activity</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+        <p className="micro-label">Insider Activity</p>
+        <p className="mt-4 text-sm leading-8 ql-body">
           Recent insider transaction data was not available in the last 90 days, so the thesis is
           leaning entirely on price action and market data rather than executive behavior.
         </p>
@@ -1088,17 +1516,18 @@ function InsiderActivityCard({ analysis }: { analysis: QuantLensAnalysis }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      id="insider-activity"
+      className="ql-soft-panel rounded-[32px] p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Insider Activity</p>
+          <p className="micro-label">Insider Activity</p>
           <h3 className={`mt-2 text-2xl font-semibold ${sentimentStyle}`}>
             {insiderActivity.sentiment}
           </h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Net Shares</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Net Shares</p>
           <p className={`mt-1 text-lg font-semibold ${scoreStyles(insiderActivity.netShares)}`}>
             {insiderActivity.netShares >= 0 ? "+" : ""}
             {new Intl.NumberFormat("en-US", {
@@ -1108,32 +1537,32 @@ function InsiderActivityCard({ analysis }: { analysis: QuantLensAnalysis }) {
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{insiderActivity.explanation}</p>
+      <p className="mt-4 text-sm leading-8 ql-body">{insiderActivity.explanation}</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Transactions</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Transactions</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {insiderActivity.buyCount} buys / {insiderActivity.sellCount} sells
           </p>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Latest Filing</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Latest Filing</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {insiderActivity.latestDate ?? "N/A"}
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{insiderActivity.summary}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{insiderActivity.summary}</p>
       {insiderActivity.transactions.length > 0 ? (
         <div className="mt-5 grid gap-3">
           {insiderActivity.transactions.slice(0, 3).map((transaction) => (
             <div
               key={`${transaction.date}-${transaction.filerName}-${transaction.transactionType}`}
-              className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm"
+              className="ql-soft-panel rounded-[22px] px-4 py-3 text-sm"
             >
               <div className="flex items-center justify-between gap-4">
                 <span className="font-medium text-white">{transaction.filerName}</span>
-                <span className="text-[#96a4bd]">{transaction.date}</span>
+                <span className="ql-muted">{transaction.date}</span>
               </div>
               <p className="mt-1 text-[#cfd6e4]">
                 {transaction.relation} | {transaction.transactionType}
@@ -1153,10 +1582,11 @@ function ShortSqueezeCard({ analysis }: { analysis: QuantLensAnalysis }) {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+                id="short-squeeze-risk"
+                className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Short Squeeze Risk</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+        <p className="micro-label">Short Squeeze Risk</p>
+        <p className="mt-4 text-sm leading-8 ql-body">
           Short interest data was not available for this ticker, so the squeeze read is inconclusive.
         </p>
       </motion.section>
@@ -1176,38 +1606,39 @@ function ShortSqueezeCard({ analysis }: { analysis: QuantLensAnalysis }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      id="short-squeeze-risk"
+      className="ql-soft-panel rounded-[32px] p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Short Squeeze Risk</p>
+          <p className="micro-label">Short Squeeze Risk</p>
           <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
             {shortSqueeze.probabilityScore.toFixed(0)}/100
           </h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Read</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Read</p>
           <p className={`mt-1 text-lg font-semibold ${tone}`}>{shortSqueeze.sentiment}</p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{shortSqueeze.explanation}</p>
+      <p className="mt-4 text-sm leading-8 ql-body">{shortSqueeze.explanation}</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Short % Float</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Short % Float</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {shortSqueeze.shortPercentOfFloat == null
               ? "N/A"
               : `${(shortSqueeze.shortPercentOfFloat * 100).toFixed(1)}%`}
           </p>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Days To Cover</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Days To Cover</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {shortSqueeze.daysToCover == null ? "N/A" : shortSqueeze.daysToCover.toFixed(1)}
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{shortSqueeze.summary}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{shortSqueeze.summary}</p>
     </motion.section>
   );
 }
@@ -1219,10 +1650,11 @@ function NewsSentimentCard({ analysis }: { analysis: QuantLensAnalysis }) {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        id="news-sentiment"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">News Sentiment</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+        <p className="micro-label">News Sentiment</p>
+        <p className="mt-4 text-sm leading-8 ql-body">
           Recent headlines were not available for this ticker, so the thesis is leaning on price
           action rather than on a fresh news read.
         </p>
@@ -1249,29 +1681,30 @@ function NewsSentimentCard({ analysis }: { analysis: QuantLensAnalysis }) {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      id="news-sentiment"
+      className="ql-soft-panel rounded-[32px] p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">News Sentiment</p>
+          <p className="micro-label">News Sentiment</p>
           <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
             {newsSentiment.score.toFixed(0)}/100
           </h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Alignment</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Alignment</p>
           <p className={`mt-1 text-lg font-semibold ${alignmentTone}`}>
             {newsSentiment.alignment}
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{newsSentiment.explanation}</p>
-      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{newsSentiment.summary}</p>
+      <p className="mt-4 text-sm leading-8 ql-body">{newsSentiment.explanation}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{newsSentiment.summary}</p>
       <div className="mt-5 grid gap-3">
         {newsSentiment.headlines.slice(0, 3).map((headline) => (
           <div
             key={headline.link}
-            className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm"
+            className="ql-soft-panel rounded-[22px] px-4 py-3 text-sm"
           >
             <div className="flex items-center justify-between gap-4">
               <span className={`font-medium ${scoreStyles(headline.sentimentScore)}`}>
@@ -1281,7 +1714,7 @@ function NewsSentimentCard({ analysis }: { analysis: QuantLensAnalysis }) {
                     ? "Negative"
                     : "Neutral"}
               </span>
-              <span className="text-[#96a4bd]">
+                <span className="ql-muted">
                 {headline.publishedAt ? new Date(headline.publishedAt).toLocaleDateString() : ""}
               </span>
             </div>
@@ -1300,10 +1733,11 @@ function InstitutionalOwnershipCard({ analysis }: { analysis: QuantLensAnalysis 
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        id="institutional-ownership"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Institutional Ownership</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+        <p className="micro-label">Institutional Ownership</p>
+        <p className="mt-4 text-sm leading-8 ql-body">
           Institutional ownership history was not available for this ticker, so the thesis is not
           using a holder-rotation signal here.
         </p>
@@ -1324,38 +1758,39 @@ function InstitutionalOwnershipCard({ analysis }: { analysis: QuantLensAnalysis 
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      id="institutional-ownership"
+      className="ql-soft-panel rounded-[32px] p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="micro-label text-[#7d8597]">Institutional Ownership</p>
+          <p className="micro-label">Institutional Ownership</p>
           <h3 className="mt-2 text-2xl font-semibold text-white">
             {institutionalOwnership.currentPercentHeld == null
               ? "N/A"
               : `${(institutionalOwnership.currentPercentHeld * 100).toFixed(1)}%`}
           </h3>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Trend</p>
+        <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Trend</p>
           <p className={`mt-1 text-lg font-semibold ${trendTone}`}>
             {institutionalOwnership.trend}
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+      <p className="mt-4 text-sm leading-8 ql-body">
         {institutionalOwnership.explanation}
       </p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Last Quarter</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Last Quarter</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {institutionalOwnership.previousQuarterPercentHeld == null
               ? "N/A"
               : `${(institutionalOwnership.previousQuarterPercentHeld * 100).toFixed(1)}%`}
           </p>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-          <p className="micro-label text-[#7d8597]">Two Quarters Ago</p>
+        <div className="ql-soft-panel rounded-[24px] p-4">
+          <p className="micro-label">Two Quarters Ago</p>
           <p className="mt-2 text-2xl font-semibold text-white">
             {institutionalOwnership.twoQuartersAgoPercentHeld == null
               ? "N/A"
@@ -1363,7 +1798,7 @@ function InstitutionalOwnershipCard({ analysis }: { analysis: QuantLensAnalysis 
           </p>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{institutionalOwnership.summary}</p>
+      <p className="mt-4 text-sm leading-8 ql-muted">{institutionalOwnership.summary}</p>
     </motion.section>
   );
 }
@@ -1391,42 +1826,43 @@ function AnalysisSidebar({
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="rounded-[32px] border border-cyan-300/12 bg-[linear-gradient(180deg,rgba(125,211,252,0.06),rgba(255,255,255,0.03))] p-6"
+          id="sector-context-card"
+          className="ql-soft-panel rounded-[32px] p-6"
         >
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="micro-label text-[#7d8597]">Sector Context</p>
+              <p className="micro-label">Sector Context</p>
               <h3 className="mt-2 text-2xl font-semibold text-white">
                 {analysis.sectorContext.sectorName}
               </h3>
             </div>
-            <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
-              <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Vs Proxy</p>
+            <div className="ql-soft-panel rounded-[24px] px-4 py-3 text-right">
+              <p className="text-[0.68rem] uppercase tracking-[0.24em] ql-muted">Vs Proxy</p>
               <p className="mt-1 text-lg font-semibold text-white">
                 {analysis.sectorContext.benchmarkSymbol}
               </p>
             </div>
           </div>
-          <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+          <p className="mt-4 text-sm leading-8 ql-body">
             {analysis.sectorContext.explanation}
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-              <p className="micro-label text-[#7d8597]">Momentum Gap</p>
+            <div className="ql-soft-panel rounded-[24px] p-4">
+              <p className="micro-label">Momentum Gap</p>
               <p className={`mt-2 text-2xl font-semibold ${scoreStyles(analysis.sectorContext.momentumGap)}`}>
                 {analysis.sectorContext.momentumGap >= 0 ? "+" : ""}
                 {analysis.sectorContext.momentumGap.toFixed(2)}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
-              <p className="micro-label text-[#7d8597]">Conviction Gap</p>
+            <div className="ql-soft-panel rounded-[24px] p-4">
+              <p className="micro-label">Conviction Gap</p>
               <p className={`mt-2 text-2xl font-semibold ${scoreStyles(analysis.sectorContext.convictionGap)}`}>
                 {analysis.sectorContext.convictionGap >= 0 ? "+" : ""}
                 {analysis.sectorContext.convictionGap.toFixed(1)}
               </p>
             </div>
           </div>
-          <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">
+          <p className="mt-4 text-sm leading-8 ql-muted">
             {analysis.sectorContext.summary} The comparison uses {analysis.sectorContext.benchmarkName} as a liquid sector tape proxy for what the average setup in that group looks like right now.
           </p>
         </motion.section>
@@ -1436,29 +1872,29 @@ function AnalysisSidebar({
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.05 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Institutional Thesis</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{current.thesis}</p>
+        <p className="micro-label">Institutional Thesis</p>
+        <p className="mt-4 text-sm leading-8 ql-body">{current.thesis}</p>
       </motion.section>
 
       <motion.section
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Biggest Risk Right Now</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{current.risk}</p>
+        <p className="micro-label">Biggest Risk Right Now</p>
+        <p className="mt-4 text-sm leading-8 ql-body">{current.risk}</p>
       </motion.section>
 
       <motion.section
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15 }}
-        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+        className="ql-soft-panel rounded-[32px] p-6"
       >
-        <p className="micro-label text-[#7d8597]">Diagnostic Tape</p>
+        <p className="micro-label">Diagnostic Tape</p>
         <div className="mt-4 grid gap-3">
           {[
             ["Sector", analysis.sector ?? "N/A"],
@@ -1475,9 +1911,9 @@ function AnalysisSidebar({
           ].map(([label, value]) => (
             <div
               key={label}
-              className="flex items-center justify-between rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm"
+              className="ql-soft-panel flex items-center justify-between rounded-[22px] px-4 py-3 text-sm"
             >
-              <span className="text-[#96a4bd]">{label}</span>
+              <span className="ql-muted">{label}</span>
               <span className="font-medium text-white">{value}</span>
             </div>
           ))}
@@ -1487,46 +1923,111 @@ function AnalysisSidebar({
   );
 }
 
-function EmptyState() {
+function EmptyState({
+  onSelectTicker,
+}: {
+  onSelectTicker: (ticker: string) => void;
+}) {
+  const examples = ["NVDA", "MSFT", "JPM"];
+
   return (
-    <section className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-      <div className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
-        <p className="micro-label text-[#7d8597]">Workflow</p>
-        <div className="mt-5 space-y-4">
-          {[
-            "Pull live quote, six months of daily price history, and key valuation fields.",
-            "Transform the raw tape into momentum, mean reversion, and volatility-adjusted signals.",
-            "Translate the result into conviction, risk, thesis quality, or compare two names side by side.",
-          ].map((step, index) => (
-            <div key={step} className="flex gap-4 rounded-2xl border border-white/8 bg-black/10 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-sm text-cyan-100">
-                {index + 1}
-              </div>
-              <p className="text-sm leading-7 text-[#c6cbda]">{step}</p>
-            </div>
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6 }}
+      className="ql-hero-panel relative overflow-hidden rounded-[40px] px-8 py-14 sm:px-10 lg:px-14"
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <motion.div
+          animate={{ x: [0, 18, 0], opacity: [0.18, 0.3, 0.18] }}
+          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute left-[8%] top-[18%] h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(245,163,92,0.16),transparent_68%)] blur-3xl"
+        />
+        <motion.div
+          animate={{ y: [0, -14, 0], opacity: [0.1, 0.18, 0.1] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute right-[10%] top-[14%] h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(255,214,175,0.12),transparent_72%)] blur-3xl"
+        />
+        <svg
+          viewBox="0 0 1200 420"
+          className="absolute inset-x-0 bottom-0 h-[68%] w-full opacity-55"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id="empty-grid" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.02)" />
+              <stop offset="55%" stopColor="rgba(245,163,92,0.12)" />
+              <stop offset="100%" stopColor="rgba(255,255,255,0.02)" />
+            </linearGradient>
+            <linearGradient id="empty-line" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="rgba(255,210,168,0.04)" />
+              <stop offset="50%" stopColor="rgba(245,163,92,0.42)" />
+              <stop offset="100%" stopColor="rgba(255,210,168,0.04)" />
+            </linearGradient>
+          </defs>
+          {[80, 160, 240, 320].map((y) => (
+            <line
+              key={y}
+              x1="0"
+              y1={y}
+              x2="1200"
+              y2={y}
+              stroke="url(#empty-grid)"
+              strokeWidth="1"
+            />
           ))}
-        </div>
+          <motion.path
+            initial={{ pathLength: 0.7, opacity: 0.35 }}
+            animate={{ pathLength: [0.72, 1, 0.72], opacity: [0.24, 0.46, 0.24] }}
+            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+            d="M0 292 C120 270, 180 238, 260 248 S420 310, 510 274 670 164, 740 186 896 300, 980 260 1110 194, 1200 212"
+            fill="none"
+            stroke="url(#empty-line)"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+          <motion.path
+            initial={{ pathLength: 0.8, opacity: 0.16 }}
+            animate={{ pathLength: [0.82, 1, 0.82], opacity: [0.08, 0.2, 0.08] }}
+            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+            d="M0 326 C110 318, 210 282, 302 294 S460 340, 552 322 712 240, 804 250 964 332, 1048 306 1144 262, 1200 274"
+            fill="none"
+            stroke="rgba(255,240,223,0.18)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
       </div>
 
-      <div className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
-        <p className="micro-label text-[#7d8597]">What You Get</p>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {[
-            "Single-stock readout",
-            "Head-to-head comparison mode",
-            "Signal-by-signal leader board",
-            "Plain-English winner explanation",
-          ].map((item) => (
-            <div
-              key={item}
-              className="rounded-2xl border border-white/8 bg-black/10 p-4 text-sm text-[#d0d6e4]"
+      <div className="relative z-10 max-w-3xl">
+        <p className="micro-label ql-kicker">Start Here</p>
+        <h2 className="mt-4 text-5xl font-semibold tracking-[-0.08em] text-white sm:text-6xl">
+          See what the tape is saying before you commit capital.
+        </h2>
+        <p className="mt-5 max-w-2xl text-lg leading-9 ql-body">
+          Quant Lens translates institutional quant analysis into plain English, helping you understand momentum, mean reversion, volatility, and timing in one clear read.
+        </p>
+
+        <div className="mt-10 flex flex-wrap gap-3">
+          {examples.map((ticker) => (
+            <motion.button
+              key={ticker}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              onClick={() => onSelectTicker(ticker)}
+              className="ql-action-subtle rounded-full px-5 py-3 text-sm font-medium tracking-[0.18em] uppercase transition hover:text-[#ffd3a8]"
             >
-              {item}
-            </div>
+              {ticker}
+            </motion.button>
           ))}
         </div>
+
+        <p className="mt-5 text-sm ql-muted">
+          Pick an example to instantly run a live analysis and see the full thesis, conviction score, catalyst risk, and timing read.
+        </p>
       </div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -1548,6 +2049,7 @@ export function QuantLensApp() {
     comparison: null,
     error: null,
   });
+  const [pendingFeatureTarget, setPendingFeatureTarget] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -1760,15 +2262,6 @@ export function QuantLensApp() {
     });
   }, []);
 
-  useEffect(() => {
-    if (mode === "single") {
-      void runSingleAnalysis("NVDA");
-      return;
-    }
-
-    void runComparison("NVDA", "AMD");
-  }, [mode, runComparison, runSingleAnalysis]);
-
   function handleSingleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void runSingleAnalysis(ticker.trim().toUpperCase());
@@ -1816,6 +2309,48 @@ export function QuantLensApp() {
     void runSingleAnalysis(nextTicker);
   }
 
+  function launchFeature(feature: FeatureLink) {
+    const nextMode = feature.mode ?? "single";
+    setPendingFeatureTarget(feature.targetId);
+
+    if (nextMode === "compare" && feature.compareTickers) {
+      const [left, right] = feature.compareTickers;
+      setMode("compare");
+      setLeftTicker(left);
+      setRightTicker(right);
+      scrollToSection("app-workspace");
+      void runComparison(left, right);
+      return;
+    }
+
+    const nextTicker = feature.ticker ?? ticker;
+    setMode("single");
+    setTicker(nextTicker);
+    scrollToSection("app-workspace");
+    void runSingleAnalysis(nextTicker);
+  }
+
+  useEffect(() => {
+    if (!pendingFeatureTarget || isPending) {
+      return;
+    }
+
+    if (pendingFeatureTarget === "app-workspace" || pendingFeatureTarget === "compare-workspace") {
+      scrollToSection(pendingFeatureTarget);
+      setPendingFeatureTarget(null);
+      return;
+    }
+
+    if ((mode === "single" && state.analysis) || (mode === "compare" && state.comparison)) {
+      const timeout = window.setTimeout(() => {
+        scrollToSection(pendingFeatureTarget);
+        setPendingFeatureTarget(null);
+      }, 140);
+
+      return () => window.clearTimeout(timeout);
+    }
+  }, [isPending, mode, pendingFeatureTarget, state.analysis, state.comparison]);
+
   function getCurrentView(nextAnalysis: QuantLensAnalysis): AnalysisView {
     return stressMode
       ? nextAnalysis.stressTest.stressed
@@ -1833,38 +2368,41 @@ export function QuantLensApp() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden px-4 py-6 text-white sm:px-6 lg:px-10">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(72,163,255,0.18),transparent_30%),radial-gradient(circle_at_85%_15%,rgba(0,255,163,0.08),transparent_24%),linear-gradient(180deg,#07111f_0%,#050914_60%,#03070d_100%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(137,150,173,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(137,150,173,0.12)_1px,transparent_1px)] [background-size:72px_72px]" />
+    <main className="ql-shell relative min-h-screen overflow-hidden px-4 py-8 text-white sm:px-8 lg:px-12">
+      <section className="relative mx-auto flex max-w-[1440px] flex-col gap-8">
+        <MarketingHero onLaunch={launchFeature} />
+        <MarketingFeatures onLaunch={launchFeature} />
+        <HowItWorksSection />
+        <SocialProofSection />
 
-      <section className="relative mx-auto flex max-w-7xl flex-col gap-6">
         <motion.header
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55 }}
-          className="grid gap-5 rounded-[32px] border border-[#1c2738] bg-[#08111d]/85 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:grid-cols-[1.25fr_0.75fr]"
+          id="app-workspace"
+          className="ql-hero-panel grid gap-8 rounded-[40px] p-8 lg:grid-cols-[1.2fr_0.8fr] lg:p-10"
         >
-          <div className="space-y-5">
+          <div className="space-y-7">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-sm font-semibold tracking-[0.2em] text-cyan-100">
+              <div className="ql-signal-orb flex h-12 w-12 items-center justify-center text-sm font-semibold tracking-[0.2em] text-[#29160d]">
                 QL
               </div>
               <div>
-                <p className="micro-label text-cyan-200/70">Quant Lens</p>
-                <p className="text-sm text-[#95a3bd]">Institutional signals, translated for real people.</p>
+                <p className="micro-label ql-kicker">Quant Lens</p>
+                <p className="text-sm ql-muted">Institutional signals, translated with clarity.</p>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl">
-                Read one stock like a systematic desk or pit two names against each other.
+            <div className="space-y-5">
+              <h1 className="max-w-4xl text-5xl font-semibold tracking-[-0.08em] text-white sm:text-6xl lg:text-[4.5rem] lg:leading-[0.95]">
+                A calmer way to read market signals with institutional discipline.
               </h1>
-              <p className="max-w-2xl text-base leading-8 text-[#b5bfd3]">
-                Quant Lens now supports both single-name analysis and a head-to-head mode that shows which stock has the stronger quant case, by how much, and why that edge matters right now.
+              <p className="max-w-2xl text-lg leading-9 ql-body">
+                Quant Lens turns live quantitative analysis into confident, plain-English guidance for investors who want signal quality, timing context, and a premium product experience instead of terminal clutter.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {[
                 ["single", "Single Name"],
                 ["compare", "Head To Head"],
@@ -1873,11 +2411,12 @@ export function QuantLensApp() {
                   key={value}
                   type="button"
                   onClick={() => setMode(value as Mode)}
-                  className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.24em] transition ${
+                  className={`tag-button rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] transition ${
                     mode === value
-                      ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
-                      : "border-white/10 bg-white/[0.04] text-[#99a6bf]"
+                      ? ""
+                      : ""
                   }`}
+                  data-active={mode === value}
                 >
                   {label}
                 </button>
@@ -1885,11 +2424,8 @@ export function QuantLensApp() {
               <button
                 type="button"
                 onClick={() => setStressMode((current) => !current)}
-                className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.24em] transition ${
-                  stressMode
-                    ? "border-rose-300/40 bg-rose-300/10 text-rose-100"
-                    : "border-white/10 bg-white/[0.04] text-[#99a6bf]"
-                }`}
+                className="tag-button rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] transition"
+                data-active={stressMode}
               >
                 {stressMode ? "Stress On" : "Stress Off"}
               </button>
@@ -1906,12 +2442,12 @@ export function QuantLensApp() {
                     value={ticker}
                     onChange={(event) => setTicker(event.target.value.toUpperCase())}
                     placeholder="Enter ticker, e.g. AAPL"
-                    className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
+                    className="ql-input flex-1 rounded-[24px] px-5 py-4 text-base transition"
                   />
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="rounded-2xl bg-[linear-gradient(135deg,#b6f09c_0%,#6ed3cf_40%,#7393ff_100%)] px-6 py-4 text-sm font-semibold tracking-[0.18em] text-slate-950 uppercase transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
+                    className="ql-action rounded-[24px] px-6 py-4 text-sm font-semibold tracking-[0.18em] uppercase transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
                   >
                     {isPending ? "Analyzing" : "Run Analysis"}
                   </button>
@@ -1920,14 +2456,18 @@ export function QuantLensApp() {
                   <button
                     type="button"
                     onClick={() => addToWatchlist(ticker)}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.24em] text-[#9aa7bf] transition hover:border-cyan-300/30 hover:text-cyan-100"
+                    className="ql-action-subtle rounded-full px-4 py-2 text-xs uppercase tracking-[0.24em] transition hover:text-[#ffd3a8]"
                   >
                     Save To Watchlist
                   </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleCompareSubmit} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+              <form
+                id="compare-workspace"
+                onSubmit={handleCompareSubmit}
+                className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+              >
                 <label className="sr-only" htmlFor="leftTicker">
                   Left ticker
                 </label>
@@ -1936,7 +2476,7 @@ export function QuantLensApp() {
                   value={leftTicker}
                   onChange={(event) => setLeftTicker(event.target.value.toUpperCase())}
                   placeholder="First ticker"
-                  className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
+                  className="ql-input rounded-[24px] px-5 py-4 text-base transition"
                 />
                 <label className="sr-only" htmlFor="rightTicker">
                   Right ticker
@@ -1946,12 +2486,12 @@ export function QuantLensApp() {
                   value={rightTicker}
                   onChange={(event) => setRightTicker(event.target.value.toUpperCase())}
                   placeholder="Second ticker"
-                  className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
+                  className="ql-input rounded-[24px] px-5 py-4 text-base transition"
                 />
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="rounded-2xl bg-[linear-gradient(135deg,#b6f09c_0%,#6ed3cf_40%,#7393ff_100%)] px-6 py-4 text-sm font-semibold tracking-[0.18em] text-slate-950 uppercase transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
+                  className="ql-action rounded-[24px] px-6 py-4 text-sm font-semibold tracking-[0.18em] uppercase transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
                 >
                   {isPending ? "Comparing" : "Compare"}
                 </button>
@@ -1968,7 +2508,8 @@ export function QuantLensApp() {
                       setTicker(suggestion);
                       void runSingleAnalysis(suggestion);
                     }}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs tracking-[0.22em] text-[#9aa7bf] uppercase transition hover:border-cyan-300/30 hover:text-cyan-100"
+                    className="tag-button rounded-full px-3 py-1.5 text-xs tracking-[0.22em] uppercase transition"
+                    data-active={false}
                   >
                     {suggestion}
                   </button>
@@ -1985,7 +2526,8 @@ export function QuantLensApp() {
                       setRightTicker(right);
                       void runComparison(left, right);
                     }}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs tracking-[0.22em] text-[#9aa7bf] uppercase transition hover:border-cyan-300/30 hover:text-cyan-100"
+                    className="tag-button rounded-full px-3 py-1.5 text-xs tracking-[0.22em] uppercase transition"
+                    data-active={false}
                   >
                     {left} vs {right}
                   </button>
@@ -1994,11 +2536,11 @@ export function QuantLensApp() {
             )}
           </div>
 
-          <div className="grid gap-4 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5">
-            <p className="micro-label text-[#8aa2c5]">
+          <div className="ql-panel grid gap-5 rounded-[32px] p-7">
+            <p className="micro-label ql-kicker">
               {mode === "single" ? "Signal Stack" : "Comparison Stack"}
             </p>
-            <div className="grid gap-3 text-sm leading-7 text-[#c3ccdc]">
+            <div className="grid gap-4 text-sm leading-8 ql-body">
               <p><span className="text-white">Momentum:</span> asks whether price strength is being confirmed by real participation.</p>
               <p><span className="text-white">Mean reversion:</span> asks whether the stock has wandered too far from its own trend.</p>
               <p><span className="text-white">Volatility-adjusted:</span> blends both while punishing noisy setups that look better on paper than they trade in reality.</p>
@@ -2006,7 +2548,7 @@ export function QuantLensApp() {
                 <p><span className="text-white">Head to head:</span> ranks both names signal by signal and explains why the winner is more attractive now.</p>
               ) : null}
             </div>
-            <div className="rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.05] p-4 text-sm leading-7 text-cyan-50/90">
+            <div className="ql-soft-panel rounded-[24px] p-5 text-sm leading-8 ql-body">
               {mode === "single"
                 ? "The output is not a target price. It is a disciplined read on whether the current setup deserves offensive capital, patient capital, or no capital."
                 : "Comparison mode is built for relative decisions: if you only want one expression in a crowded sector, it helps identify which tape has the cleaner institutional case."}
@@ -2015,34 +2557,21 @@ export function QuantLensApp() {
         </motion.header>
 
         {state.error ? (
-          <div className="rounded-[28px] border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
+          <div className="ql-soft-panel rounded-[28px] px-5 py-4 text-sm text-rose-100">
             {state.error}
           </div>
         ) : null}
 
-        <WatchlistDashboard
-          entries={watchlistEntries}
-          watchlistInput={watchlistInput}
-          watchlistError={watchlistError}
-          onWatchlistInputChange={setWatchlistInput}
-          onAddTicker={addToWatchlist}
-          onOpenTicker={openFromWatchlist}
-          onRemoveTicker={removeFromWatchlist}
-          remainingSlots={WATCHLIST_LIMIT - watchlist.length}
-        />
-
-        <MarketLeaderboard
-          entries={leaderboardEntries}
-          isLoading={isLeaderboardLoading}
-          error={leaderboardError}
-          onOpenTicker={openFromWatchlist}
-          onRefresh={() => {
-            void refreshLeaderboard();
-          }}
-        />
+        {isPending ? <LoadingSequence mode={mode} /> : null}
 
         {!analysis ? (
-          <EmptyState />
+          <EmptyState
+            onSelectTicker={(nextTicker) => {
+              setMode("single");
+              setTicker(nextTicker);
+              void runSingleAnalysis(nextTicker);
+            }}
+          />
         ) : comparison ? (
           <section className="grid gap-6">
             <motion.section
@@ -2126,11 +2655,20 @@ export function QuantLensApp() {
                 current={getCurrentView(analysis)}
                 stressMode={stressMode}
               />
-              <SignalHistoryChart analysis={analysis} />
+              <SignalHistoryChart analysis={analysis} sectionId="signal-history-chart" />
               <div className="grid gap-6 xl:grid-cols-3">
-                <SignalCard signal={getCurrentView(analysis).momentum} />
-                <SignalCard signal={getCurrentView(analysis).meanReversion} />
-                <SignalCard signal={getCurrentView(analysis).volatilityAdjusted} />
+                <SignalCard
+                  signal={getCurrentView(analysis).momentum}
+                  sectionId="signal-momentum"
+                />
+                <SignalCard
+                  signal={getCurrentView(analysis).meanReversion}
+                  sectionId="signal-mean-reversion"
+                />
+                <SignalCard
+                  signal={getCurrentView(analysis).volatilityAdjusted}
+                  sectionId="signal-volatility-adjusted"
+                />
               </div>
             </div>
             <AnalysisSidebar
@@ -2140,6 +2678,28 @@ export function QuantLensApp() {
             />
           </section>
         )}
+
+        <WatchlistDashboard
+          entries={watchlistEntries}
+          watchlistInput={watchlistInput}
+          watchlistError={watchlistError}
+          onWatchlistInputChange={setWatchlistInput}
+          onAddTicker={addToWatchlist}
+          onOpenTicker={openFromWatchlist}
+          onRemoveTicker={removeFromWatchlist}
+          remainingSlots={WATCHLIST_LIMIT - watchlist.length}
+        />
+
+        <MarketLeaderboard
+          entries={leaderboardEntries}
+          isLoading={isLeaderboardLoading}
+          error={leaderboardError}
+          onOpenTicker={openFromWatchlist}
+          onRefresh={() => {
+            void refreshLeaderboard();
+          }}
+        />
+        <Footer />
       </section>
     </main>
   );
