@@ -9,6 +9,7 @@ export type QuoteFundamentals = {
   shortName: string;
   currency: string;
   exchange: string;
+  sector: string | null;
   price: number;
   changePercent: number;
   marketCap: number | null;
@@ -29,6 +30,7 @@ export type QuantLensAnalysis = {
   companyName: string;
   currency: string;
   exchange: string;
+  sector: string | null;
   price: number;
   changePercent: number;
   marketCap: number | null;
@@ -44,6 +46,17 @@ export type QuantLensAnalysis = {
   risk: string;
   thesis: string;
   sparkline: number[];
+  sectorContext: {
+    sectorName: string;
+    benchmarkSymbol: string;
+    benchmarkName: string;
+    momentumGap: number;
+    meanReversionGap: number;
+    volatilityAdjustedGap: number;
+    convictionGap: number;
+    explanation: string;
+    summary: string;
+  } | null;
   diagnostics: {
     momentumScore: number;
     meanReversionScore: number;
@@ -251,6 +264,54 @@ function buildInstitutionalThesis({
   )}/10 conviction because the directional tape, the stock's distance from trend, and the risk-adjusted composite are not fighting each other in a major way. Momentum is ${momentum.label.toLowerCase()}, mean reversion is ${meanReversion.label.toLowerCase()}, and the volatility-adjusted read is ${volatilityAdjusted.label.toLowerCase()}, which together suggest the opportunity is more about disciplined positioning than heroic forecasting. The institutional takeaway is straightforward: respect the signal, size it to the volatility, and stay humble about how quickly the setup can change if price action or participation deteriorates.`;
 }
 
+function buildSectorContextSummary({
+  symbol,
+  sectorName,
+  convictionGap,
+}: {
+  symbol: string;
+  sectorName: string;
+  convictionGap: number;
+}) {
+  if (convictionGap > 0.35) {
+    return `${symbol} is screening stronger than the average ${sectorName.toLowerCase()} setup right now.`;
+  }
+
+  if (convictionGap < -0.35) {
+    return `${symbol} is lagging the average ${sectorName.toLowerCase()} tape right now.`;
+  }
+
+  return `${symbol} is trading roughly in line with the broader ${sectorName.toLowerCase()} complex right now.`;
+}
+
+function buildSectorContextExplanation({
+  analysis,
+  benchmark,
+}: {
+  analysis: QuantLensAnalysis;
+  benchmark: QuantLensAnalysis;
+}) {
+  const momentumGap = analysis.momentum.score - benchmark.momentum.score;
+  const volatilityAdjustedGap =
+    analysis.volatilityAdjusted.score - benchmark.volatilityAdjusted.score;
+
+  const momentumRead =
+    momentumGap > 0.12
+      ? `${analysis.symbol} has stronger momentum than the sector backdrop, which usually means the stock is attracting incremental capital instead of just getting dragged higher by group beta.`
+      : momentumGap < -0.12
+        ? `${analysis.symbol} has weaker momentum than the sector backdrop, which is a warning sign because it means money is finding better homes inside the same neighborhood.`
+        : `${analysis.symbol}'s momentum is close to the sector backdrop, so the tape is behaving more like a sector passenger than a standout leader.`;
+
+  const rotationRead =
+    volatilityAdjustedGap > 0.12
+      ? `Its risk-adjusted composite is also better than the sector proxy, so if this is a rotation trade, ${analysis.symbol} looks like one of the cleaner ways to express it.`
+      : volatilityAdjustedGap < -0.12
+        ? `Its risk-adjusted composite trails the sector proxy, which matters because in rotation markets you usually want the stock that is beating its own group, not just keeping up with it.`
+        : `Its risk-adjusted composite is close to the sector proxy, so the thesis depends more on the sector continuing to work than on strong stock-specific separation.`;
+
+  return `${momentumRead} ${rotationRead}`;
+}
+
 function describeEdge(gap: number) {
   if (gap >= 2) {
     return "clear";
@@ -408,6 +469,7 @@ export function analyzeQuantLensData(
     companyName: quote.shortName,
     currency: quote.currency,
     exchange: quote.exchange,
+    sector: quote.sector,
     price: latestClose,
     changePercent: quote.changePercent,
     marketCap: quote.marketCap,
@@ -435,6 +497,7 @@ export function analyzeQuantLensData(
       volatilityAdjusted,
     }),
     sparkline: closes.slice(-30),
+    sectorContext: null,
     diagnostics: {
       momentumScore,
       meanReversionScore,
@@ -442,6 +505,36 @@ export function analyzeQuantLensData(
       realizedVolatility,
       priceVs20DayAverage: deviation,
       volumeRatio,
+    },
+  };
+}
+
+export function attachSectorContext(
+  analysis: QuantLensAnalysis,
+  benchmark: QuantLensAnalysis,
+  benchmarkSymbol: string,
+  benchmarkName: string,
+): QuantLensAnalysis {
+  const sectorName = analysis.sector ?? "Sector";
+  const convictionGap = analysis.convictionScore - benchmark.convictionScore;
+
+  return {
+    ...analysis,
+    sectorContext: {
+      sectorName,
+      benchmarkSymbol,
+      benchmarkName,
+      momentumGap: analysis.momentum.score - benchmark.momentum.score,
+      meanReversionGap: analysis.meanReversion.score - benchmark.meanReversion.score,
+      volatilityAdjustedGap:
+        analysis.volatilityAdjusted.score - benchmark.volatilityAdjusted.score,
+      convictionGap,
+      explanation: buildSectorContextExplanation({ analysis, benchmark }),
+      summary: buildSectorContextSummary({
+        symbol: analysis.symbol,
+        sectorName,
+        convictionGap,
+      }),
     },
   };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   analyzeQuantLensData,
+  attachSectorContext,
   compareQuantLensAnalyses,
   type PricePoint,
   type QuoteFundamentals,
@@ -20,6 +21,7 @@ const quote: QuoteFundamentals = {
   shortName: "Test Corp",
   currency: "USD",
   exchange: "NASDAQ",
+  sector: "Technology",
   price: 100,
   changePercent: 0.01,
   marketCap: 5_000_000_000,
@@ -89,5 +91,27 @@ describe("analyzeQuantLensData", () => {
     expect(comparison.loser.symbol).toBe("BBB");
     expect(comparison.convictionGap).toBeGreaterThanOrEqual(0);
     expect(comparison.explanation).toContain("AAA");
+  });
+
+  it("adds sector context relative to a benchmark proxy", () => {
+    const stock = analyzeQuantLensData(
+      { ...quote, symbol: "NVDA", shortName: "Nvidia Proxy", sector: "Technology" },
+      makeHistory(Array.from({ length: 100 }, (_, index) => 90 + index * 1.05), 1_400_000),
+    );
+    const sectorProxy = analyzeQuantLensData(
+      { ...quote, symbol: "XLK", shortName: "Technology ETF", sector: "Technology" },
+      makeHistory(Array.from({ length: 100 }, (_, index) => 95 + index * 0.5), 950_000),
+    );
+
+    const enriched = attachSectorContext(
+      stock,
+      sectorProxy,
+      "XLK",
+      "Technology Select Sector SPDR Fund",
+    );
+
+    expect(enriched.sectorContext?.benchmarkSymbol).toBe("XLK");
+    expect(enriched.sectorContext?.sectorName).toBe("Technology");
+    expect(enriched.sectorContext?.explanation).toContain("sector");
   });
 });

@@ -299,6 +299,52 @@ function SignalComparisonTable({ comparison }: { comparison: QuantLensComparison
 function AnalysisSidebar({ analysis }: { analysis: QuantLensAnalysis }) {
   return (
     <div className="grid gap-6">
+      {analysis.sectorContext ? (
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="rounded-[32px] border border-cyan-300/12 bg-[linear-gradient(180deg,rgba(125,211,252,0.06),rgba(255,255,255,0.03))] p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="micro-label text-[#7d8597]">Sector Context</p>
+              <h3 className="mt-2 text-2xl font-semibold text-white">
+                {analysis.sectorContext.sectorName}
+              </h3>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+              <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Vs Proxy</p>
+              <p className="mt-1 text-lg font-semibold text-white">
+                {analysis.sectorContext.benchmarkSymbol}
+              </p>
+            </div>
+          </div>
+          <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+            {analysis.sectorContext.explanation}
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+              <p className="micro-label text-[#7d8597]">Momentum Gap</p>
+              <p className={`mt-2 text-2xl font-semibold ${scoreStyles(analysis.sectorContext.momentumGap)}`}>
+                {analysis.sectorContext.momentumGap >= 0 ? "+" : ""}
+                {analysis.sectorContext.momentumGap.toFixed(2)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+              <p className="micro-label text-[#7d8597]">Conviction Gap</p>
+              <p className={`mt-2 text-2xl font-semibold ${scoreStyles(analysis.sectorContext.convictionGap)}`}>
+                {analysis.sectorContext.convictionGap >= 0 ? "+" : ""}
+                {analysis.sectorContext.convictionGap.toFixed(1)}
+              </p>
+            </div>
+          </div>
+          <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">
+            {analysis.sectorContext.summary} The comparison uses {analysis.sectorContext.benchmarkName} as a liquid sector tape proxy for what the average setup in that group looks like right now.
+          </p>
+        </motion.section>
+      ) : null}
+
       <motion.section
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -328,6 +374,7 @@ function AnalysisSidebar({ analysis }: { analysis: QuantLensAnalysis }) {
         <p className="micro-label text-[#7d8597]">Diagnostic Tape</p>
         <div className="mt-4 grid gap-3">
           {[
+            ["Sector", analysis.sector ?? "N/A"],
             ["Momentum score", analysis.diagnostics.momentumScore.toFixed(2)],
             ["Mean reversion score", analysis.diagnostics.meanReversionScore.toFixed(2)],
             [

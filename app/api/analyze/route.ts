@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   analyzeQuantLensData,
+  attachSectorContext,
   compareQuantLensAnalyses,
   type PricePoint,
   type QuantLensAnalysis,
@@ -42,9 +43,36 @@ type YahooQuoteSummaryResponse = {
         fiftyTwoWeekLow?: { raw?: number };
         fiftyTwoWeekHigh?: { raw?: number };
       };
+      assetProfile?: {
+        sector?: string;
+      };
     }>;
     error?: { description?: string | null };
   };
+};
+
+const SECTOR_PROXY_MAP: Record<string, { symbol: string; name: string }> = {
+  "Basic Materials": { symbol: "XLB", name: "Materials Select Sector SPDR Fund" },
+  "Communication Services": {
+    symbol: "XLC",
+    name: "Communication Services Select Sector SPDR Fund",
+  },
+  "Consumer Cyclical": {
+    symbol: "XLY",
+    name: "Consumer Discretionary Select Sector SPDR Fund",
+  },
+  "Consumer Defensive": {
+    symbol: "XLP",
+    name: "Consumer Staples Select Sector SPDR Fund",
+  },
+  Energy: { symbol: "XLE", name: "Energy Select Sector SPDR Fund" },
+  "Financial Services": { symbol: "XLF", name: "Financial Select Sector SPDR Fund" },
+  Healthcare: { symbol: "XLV", name: "Health Care Select Sector SPDR Fund" },
+  Industrials: { symbol: "XLI", name: "Industrial Select Sector SPDR Fund" },
+  RealEstate: { symbol: "XLRE", name: "Real Estate Select Sector SPDR Fund" },
+  "Real Estate": { symbol: "XLRE", name: "Real Estate Select Sector SPDR Fund" },
+  Technology: { symbol: "XLK", name: "Technology Select Sector SPDR Fund" },
+  Utilities: { symbol: "XLU", name: "Utilities Select Sector SPDR Fund" },
 };
 
 async function fetchJson<T>(url: string) {
@@ -97,6 +125,7 @@ function parseQuote(symbol: string, data: YahooQuoteSummaryResponse): QuoteFunda
     shortName: price?.shortName ?? symbol,
     currency: price?.currency ?? "USD",
     exchange: price?.exchangeName ?? "Unknown exchange",
+    sector: result?.assetProfile?.sector ?? null,
     price: livePrice,
     changePercent: price?.regularMarketChangePercent?.raw ?? 0,
     marketCap: summary?.marketCap?.raw ?? null,
@@ -112,7 +141,7 @@ async function fetchAnalysis(ticker: string): Promise<QuantLensAnalysis> {
       `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=6mo&includePrePost=false`,
     ),
     fetchJson<YahooQuoteSummaryResponse>(
-      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price,summaryDetail`,
+      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price,summaryDetail,assetProfile`,
     ),
   ]);
 
@@ -120,6 +149,30 @@ async function fetchAnalysis(ticker: string): Promise<QuantLensAnalysis> {
   const quote = parseQuote(ticker, summaryResponse);
 
   return analyzeQuantLensData(quote, history);
+}
+
+async function fetchAnalysisWithSectorContext(
+  ticker: string,
+  cache: Map<string, Promise<QuantLensAnalysis>>,
+): Promise<QuantLensAnalysis> {
+  const primary = await fetchAnalysis(ticker);
+  const sector = primary.sector;
+
+  if (!sector) {
+    return primary;
+  }
+
+  const proxy = SECTOR_PROXY_MAP[sector];
+
+  if (!proxy) {
+    return primary;
+  }
+
+  const benchmarkPromise = cache.get(proxy.symbol) ?? fetchAnalysis(proxy.symbol);
+  cache.set(proxy.symbol, benchmarkPromise);
+  const benchmark = await benchmarkPromise;
+
+  return attachSectorContext(primary, benchmark, proxy.symbol, proxy.name);
 }
 
 export async function GET(request: Request) {
@@ -133,6 +186,7 @@ export async function GET(request: Request) {
 
   const ticker = rawTicker.toUpperCase();
   const compareTo = rawCompareTo?.toUpperCase();
+  const sectorCache = new Map<string, Promise<QuantLensAnalysis>>();
 
   try {
     if (compareTo) {
@@ -143,13 +197,16 @@ export async function GET(request: Request) {
         );
       }
 
-      const [left, right] = await Promise.all([fetchAnalysis(ticker), fetchAnalysis(compareTo)]);
+      const [left, right] = await Promise.all([
+        fetchAnalysisWithSectorContext(ticker, sectorCache),
+        fetchAnalysisWithSectorContext(compareTo, sectorCache),
+      ]);
       const comparison = compareQuantLensAnalyses(left, right);
 
       return NextResponse.json({ analysis: left, comparison });
     }
 
-    const analysis = await fetchAnalysis(ticker);
+    const analysis = await fetchAnalysisWithSectorContext(ticker, sectorCache);
 
     return NextResponse.json({ analysis });
   } catch (error) {
