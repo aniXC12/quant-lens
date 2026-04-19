@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { F1StrategyApp } from "@/components/f1-strategy-app";
+import { QuantLensApp } from "@/components/quant-lens-app";
 
 export const metadata: Metadata = {
-  title: "F1 Pit Stop Strategy Predictor",
+  title: "Quant Lens",
   description:
-    "Predict a Formula 1 pit stop window from lap count, tire age, compound, and weather conditions.",
+    "Translate institutional quant signals into plain English for retail investors using live market data.",
 };
 
 export default function Home() {
-  return <F1StrategyApp />;
+  return <QuantLensApp />;
 }

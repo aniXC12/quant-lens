@@ -72,9 +72,9 @@ const bodyFont = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Codex Lab",
+  title: "Quant Lens",
   description:
-    "A student directory and profile hub built from the Codex Lab onboarding roster.",
+    "Quant Lens translates institutional quant analysis into plain English for retail investors.",
 };
 
 export default function RootLayout({
