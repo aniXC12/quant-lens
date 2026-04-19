@@ -90,6 +90,12 @@ export type QuantLensAnalysis = {
     summary: string;
     explanation: string;
   } | null;
+  tradeTiming: {
+    score: number;
+    verdict: "Optimal Now" | "Good But Stretched" | "Wait For Pullback" | "Wait For Earnings" | "Avoid For Now";
+    summary: string;
+    explanation: string;
+  };
   institutionalOwnership: {
     currentPercentHeld: number | null;
     previousQuarterPercentHeld: number | null;
@@ -826,6 +832,144 @@ function buildEarningsExplanation({
   return `The next earnings print is scheduled for ${dateText}, about ${daysUntilEarnings} days away. That is close enough to keep on the radar, but not so close that it automatically invalidates the current setup yet, which means the thesis can still trade on its own merits as long as you remember there is a volatility deadline approaching.`;
 }
 
+function buildTradeTimingSummary({
+  verdict,
+  symbol,
+}: {
+  verdict: QuantLensAnalysis["tradeTiming"]["verdict"];
+  symbol: string;
+}) {
+  if (verdict === "Optimal Now") {
+    return `${symbol} looks like a timely entry right now rather than a story you need to chase later.`;
+  }
+
+  if (verdict === "Good But Stretched") {
+    return `${symbol} still has a constructive setup, but the entry is less clean than the headline signal alone suggests.`;
+  }
+
+  if (verdict === "Wait For Pullback") {
+    return `${symbol} is interesting, but a better entry likely comes from waiting for the tape to cool off first.`;
+  }
+
+  if (verdict === "Wait For Earnings") {
+    return `${symbol} may be worth revisiting, but the cleaner timing is probably after the upcoming earnings event.`;
+  }
+
+  return `${symbol} does not have an attractive entry profile right now.`;
+}
+
+function buildTradeTimingExplanation({
+  recommendation,
+  momentumScore,
+  meanReversionScore,
+  volatilityAdjustedScore,
+  daysUntilEarnings,
+  verdict,
+}: {
+  recommendation: QuantLensAnalysis["recommendation"];
+  momentumScore: number;
+  meanReversionScore: number;
+  volatilityAdjustedScore: number;
+  daysUntilEarnings: number | null;
+  verdict: QuantLensAnalysis["tradeTiming"]["verdict"];
+}) {
+  if (verdict === "Wait For Earnings" && daysUntilEarnings != null) {
+    return `The setup may still be alive, but earnings are only ${daysUntilEarnings} days away and that makes timing the real issue. In plain English, the signal can be right and still be untimely, because a single print can overwhelm momentum and reset the stock before the thesis has time to pay you.`;
+  }
+
+  if (verdict === "Optimal Now") {
+    return `Momentum is constructive at ${momentumScore.toFixed(
+      2,
+    )}, mean reversion is still supportive at ${meanReversionScore.toFixed(
+      2,
+    )}, and there is no immediate catalyst forcing you into binary event risk. That is about as close as this model gets to saying the entry is clean right now rather than something you need to finesse over the next few weeks.`;
+  }
+
+  if (verdict === "Good But Stretched") {
+    return `Momentum is still doing enough work at ${momentumScore.toFixed(
+      2,
+    )}, but mean reversion is less forgiving at ${meanReversionScore.toFixed(
+      2,
+    )}, which tells you the entry price matters more than usual. A quant would say the idea still works, yet this is the kind of setup where scaling in or waiting for a small reset usually beats chasing strength blindly.`;
+  }
+
+  if (verdict === "Wait For Pullback") {
+    return `The signal stack is interesting, but mean reversion is only scoring ${meanReversionScore.toFixed(
+      2,
+    )} while momentum is at ${momentumScore.toFixed(
+      2,
+    )}, so today’s entry is not especially forgiving. In practice that means a better setup may arrive after a few quieter weeks, when the price either digests gains or mean reversion improves.`;
+  }
+
+  if (recommendation === "Sell" || volatilityAdjustedScore < -0.12) {
+    return `The model does not just dislike the stock, it also dislikes the timing. Momentum and the risk-adjusted read are not giving you a favorable entry window, so forcing a trade here would be more about impulse than process.`;
+  }
+
+  return `The current read is not strong enough to call this an optimal entry. The safer interpretation is that time is more likely to improve the setup than harm it, especially if momentum either strengthens decisively or the stock moves back toward a more forgiving entry level.`;
+}
+
+function buildTradeTiming({
+  symbol,
+  recommendation,
+  momentumScore,
+  meanReversionScore,
+  volatilityAdjustedScore,
+  daysUntilEarnings,
+}: {
+  symbol: string;
+  recommendation: QuantLensAnalysis["recommendation"];
+  momentumScore: number;
+  meanReversionScore: number;
+  volatilityAdjustedScore: number;
+  daysUntilEarnings: number | null;
+}): QuantLensAnalysis["tradeTiming"] {
+  const earningsPenalty =
+    daysUntilEarnings == null
+      ? 0
+      : daysUntilEarnings <= 7
+        ? 3.2
+        : daysUntilEarnings <= 21
+          ? 1.6
+          : daysUntilEarnings <= 30
+            ? 0.6
+            : 0;
+  const setupBias =
+    6 +
+    Math.max(momentumScore, -0.25) * 1.7 +
+    meanReversionScore * 2 +
+    volatilityAdjustedScore * 1.4 +
+    (recommendation === "Buy" ? 0.7 : recommendation === "Sell" ? -1.2 : 0) -
+    earningsPenalty;
+  const score = clamp(setupBias, 1, 10);
+
+  const verdict: QuantLensAnalysis["tradeTiming"]["verdict"] =
+    daysUntilEarnings != null && daysUntilEarnings <= 10
+      ? "Wait For Earnings"
+      : recommendation === "Sell" || volatilityAdjustedScore < -0.16
+        ? "Avoid For Now"
+        : score >= 7.6 && momentumScore > 0.12 && meanReversionScore > -0.12
+          ? "Optimal Now"
+          : score >= 6
+            ? "Good But Stretched"
+            : recommendation === "Buy" || volatilityAdjustedScore > 0
+              ? "Wait For Pullback"
+              : "Avoid For Now";
+
+  return {
+    score,
+    verdict,
+    summary: buildTradeTimingSummary({ verdict, symbol }),
+    explanation: buildTradeTimingExplanation({
+      recommendation,
+      momentumScore,
+      meanReversionScore,
+      volatilityAdjustedScore,
+      daysUntilEarnings,
+      verdict,
+    }),
+  };
+}
+
 function buildInstitutionalOwnershipSummary({
   symbol,
   trend,
@@ -1435,6 +1579,14 @@ export function analyzeQuantLensData(
             recommendation: latestSnapshot.recommendation,
           }),
         };
+  const tradeTiming = buildTradeTiming({
+    symbol: quote.symbol,
+    recommendation: latestSnapshot.recommendation,
+    momentumScore: latestSnapshot.momentumScore,
+    meanReversionScore: latestSnapshot.meanReversionScore,
+    volatilityAdjustedScore: latestSnapshot.volatilityAdjustedScore,
+    daysUntilEarnings: quote.daysUntilEarnings,
+  });
   const institutionalOwnership: QuantLensAnalysis["institutionalOwnership"] =
     institutionalOwnershipData == null
       ? null
@@ -1492,6 +1644,7 @@ export function analyzeQuantLensData(
     shortSqueeze,
     newsSentiment,
     earningsCatalyst,
+    tradeTiming,
     institutionalOwnership,
     insiderActivity,
     sectorContext: null,

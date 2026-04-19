@@ -13,11 +13,49 @@ type ApiState = {
   error: string | null;
 };
 
+type WatchlistEntry = {
+  ticker: string;
+  analysis: QuantLensAnalysis | null;
+  error: string | null;
+};
+
+type LeaderboardEntry = {
+  ticker: string;
+  analysis: QuantLensAnalysis | null;
+  error: string | null;
+};
+
 const starterPairs = [
   ["NVDA", "AMD"],
   ["MSFT", "GOOGL"],
   ["JPM", "GS"],
 ];
+
+const TOP_SP500_TICKERS = [
+  "AAPL",
+  "MSFT",
+  "NVDA",
+  "AMZN",
+  "GOOGL",
+  "META",
+  "BRK.B",
+  "LLY",
+  "AVGO",
+  "JPM",
+  "XOM",
+  "V",
+  "UNH",
+  "COST",
+  "MA",
+  "HD",
+  "PG",
+  "JNJ",
+  "NFLX",
+  "ABBV",
+];
+
+const WATCHLIST_LIMIT = 10;
+const WATCHLIST_STORAGE_KEY = "quant-lens-watchlist";
 
 type AnalysisView = {
   convictionScore: number;
@@ -78,6 +116,18 @@ function scoreStyles(score: number) {
   }
 
   return "text-amber-100";
+}
+
+function recommendationStyles(recommendation: QuantLensAnalysis["recommendation"]) {
+  if (recommendation === "Buy") {
+    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+  }
+
+  if (recommendation === "Sell") {
+    return "border-rose-400/25 bg-rose-400/10 text-rose-200";
+  }
+
+  return "border-amber-300/25 bg-amber-300/10 text-amber-100";
 }
 
 function Sparkline({ values }: { values: number[] }) {
@@ -295,19 +345,326 @@ function SignalHistoryChart({ analysis }: { analysis: QuantLensAnalysis }) {
 }
 
 function ScoreBadge({ recommendation }: { recommendation: QuantLensAnalysis["recommendation"] }) {
-  const styles =
-    recommendation === "Buy"
-      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
-      : recommendation === "Sell"
-        ? "border-rose-400/30 bg-rose-400/10 text-rose-200"
-        : "border-amber-300/30 bg-amber-300/10 text-amber-100";
-
   return (
     <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.24em] uppercase ${styles}`}
+      className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.24em] uppercase ${recommendationStyles(
+        recommendation,
+      )}`}
     >
       {recommendation}
     </span>
+  );
+}
+
+function WatchlistCard({
+  entry,
+  onOpen,
+  onRemove,
+}: {
+  entry: WatchlistEntry;
+  onOpen: (ticker: string) => void;
+  onRemove: (ticker: string) => void;
+}) {
+  const analysis = entry.analysis;
+  const momentumScore = analysis?.momentum.score ?? 0;
+  const momentumDirection =
+    analysis == null
+      ? "Loading"
+      : momentumScore > 0.12
+        ? "Up"
+        : momentumScore < -0.12
+          ? "Down"
+          : "Flat";
+  const momentumTone =
+    analysis == null
+      ? "text-[#d2d8e5]"
+      : momentumScore > 0.12
+        ? "text-emerald-200"
+        : momentumScore < -0.12
+          ? "text-rose-200"
+          : "text-amber-100";
+
+  return (
+    <div className="rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="micro-label text-[#7d8597]">Watchlist</p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">{entry.ticker}</h3>
+          <p className="mt-1 text-sm text-[#8fa1be]">
+            {analysis?.companyName ?? entry.error ?? "Refreshing live scorecard"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onRemove(entry.ticker)}
+          className="rounded-full border border-white/10 px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] text-[#91a1ba] transition hover:border-rose-300/30 hover:text-rose-100"
+        >
+          Remove
+        </button>
+      </div>
+
+      {entry.error ? (
+        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          {entry.error}
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+              <p className="micro-label text-[#7d8597]">Conviction</p>
+              <p className="mt-2 text-2xl font-semibold text-white">
+                {analysis ? analysis.convictionScore.toFixed(1) : "--"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+              <p className="micro-label text-[#7d8597]">Call</p>
+              <div className="mt-2">
+                {analysis ? (
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.22em] uppercase ${recommendationStyles(
+                      analysis.recommendation,
+                    )}`}
+                  >
+                    {analysis.recommendation}
+                  </span>
+                ) : (
+                  <span className="text-lg text-white">--</span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+              <p className="micro-label text-[#7d8597]">Momentum</p>
+              <p className={`mt-2 text-2xl font-semibold ${momentumTone}`}>{momentumDirection}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm">
+            <span className="text-[#95a3bd]">
+              {analysis
+                ? `${analysis.price.toFixed(2)} ${analysis.currency} | ${analysis.momentum.label} tape`
+                : "Pulling live quote and signal stack"}
+            </span>
+            <button
+              type="button"
+              onClick={() => onOpen(entry.ticker)}
+              className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] text-cyan-100 transition hover:brightness-110"
+            >
+              Open
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WatchlistDashboard({
+  entries,
+  watchlistInput,
+  watchlistError,
+  onWatchlistInputChange,
+  onAddTicker,
+  onOpenTicker,
+  onRemoveTicker,
+  remainingSlots,
+}: {
+  entries: WatchlistEntry[];
+  watchlistInput: string;
+  watchlistError: string | null;
+  onWatchlistInputChange: (value: string) => void;
+  onAddTicker: (ticker: string) => void;
+  onOpenTicker: (ticker: string) => void;
+  onRemoveTicker: (ticker: string) => void;
+  remainingSlots: number;
+}) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.05 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Watchlist Dashboard</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
+            Live mini scorecards
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-8 text-[#b8c3d8]">
+            Save up to 10 names and keep a live read on conviction, recommendation, and momentum direction without running each one manually.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-right">
+          <p className="micro-label text-[#7d8597]">Capacity</p>
+          <p className="mt-1 text-2xl font-semibold text-white">
+            {entries.length}/{WATCHLIST_LIMIT}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3 lg:flex-row">
+        <input
+          value={watchlistInput}
+          onChange={(event) => onWatchlistInputChange(event.target.value.toUpperCase())}
+          placeholder="Add ticker to watchlist"
+          className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
+        />
+        <button
+          type="button"
+          onClick={() => onAddTicker(watchlistInput)}
+          disabled={remainingSlots === 0}
+          className="rounded-2xl bg-[linear-gradient(135deg,#9fe8ff_0%,#6ed3cf_45%,#7393ff_100%)] px-6 py-4 text-sm font-semibold tracking-[0.18em] text-slate-950 uppercase transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Add To Watchlist
+        </button>
+      </div>
+
+      {watchlistError ? (
+        <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          {watchlistError}
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-[#8fa1be]">
+          {remainingSlots > 0
+            ? `${remainingSlots} open slot${remainingSlots === 1 ? "" : "s"} left.`
+            : "Watchlist is full. Remove a ticker to add another one."}
+        </p>
+      )}
+
+      {entries.length === 0 ? (
+        <div className="mt-5 rounded-[28px] border border-dashed border-white/12 bg-black/10 px-5 py-8 text-sm leading-8 text-[#b8c3d8]">
+          Start with a few liquid names you care about. Quant Lens will keep a fresh mini scorecard on each one so you can spot changing conviction faster than running one-off searches all day.
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          {entries.map((entry) => (
+            <WatchlistCard
+              key={entry.ticker}
+              entry={entry}
+              onOpen={onOpenTicker}
+              onRemove={onRemoveTicker}
+            />
+          ))}
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
+function MarketLeaderboard({
+  entries,
+  isLoading,
+  error,
+  onOpenTicker,
+  onRefresh,
+}: {
+  entries: LeaderboardEntry[];
+  isLoading: boolean;
+  error: string | null;
+  onOpenTicker: (ticker: string) => void;
+  onRefresh: () => void;
+}) {
+  const rankedEntries = [...entries].sort((left, right) => {
+    const leftScore = left.analysis?.convictionScore ?? -1;
+    const rightScore = right.analysis?.convictionScore ?? -1;
+    return rightScore - leftScore;
+  });
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.08 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Market Leaderboard</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
+            Top 20 S&amp;P 500 conviction ranks
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-8 text-[#b8c3d8]">
+            Quant Lens automatically runs the signal stack across a top-tier S&amp;P 500 basket and ranks the names from strongest to weakest by current conviction.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.24em] text-[#9aa7bf] transition hover:border-cyan-300/30 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-60"
+        >
+          {isLoading ? "Refreshing" : "Refresh Board"}
+        </button>
+      </div>
+
+      {error ? (
+        <div className="mt-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="mt-5 overflow-hidden rounded-[28px] border border-white/8">
+        <div className="grid grid-cols-[0.45fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr] bg-white/[0.04] px-4 py-3 text-[0.68rem] uppercase tracking-[0.22em] text-[#8391aa]">
+          <span>Rank</span>
+          <span>Ticker</span>
+          <span>Company</span>
+          <span>Conviction</span>
+          <span>Call</span>
+          <span>Momentum</span>
+        </div>
+
+        {rankedEntries.map((entry, index) => {
+          const analysis = entry.analysis;
+          const momentumScore = analysis?.momentum.score ?? 0;
+          const momentumDirection =
+            analysis == null
+              ? "Loading"
+              : momentumScore > 0.12
+                ? "Up"
+                : momentumScore < -0.12
+                  ? "Down"
+                  : "Flat";
+
+          return (
+            <button
+              key={entry.ticker}
+              type="button"
+              onClick={() => onOpenTicker(entry.ticker)}
+              className="grid w-full grid-cols-[0.45fr_0.9fr_0.9fr_0.9fr_0.8fr_0.8fr] border-t border-white/8 px-4 py-4 text-left text-sm transition hover:bg-white/[0.03]"
+            >
+              <span className="text-[#8fa1be]">{index + 1}</span>
+              <span className="font-medium text-white">{entry.ticker}</span>
+              <span className="truncate pr-3 text-[#cfd6e4]">
+                {analysis?.companyName ?? entry.error ?? "Refreshing..."}
+              </span>
+              <span className={analysis ? scoreStyles(analysis.convictionScore / 10 - 0.5) : "text-[#d2d8e5]"}>
+                {analysis ? analysis.convictionScore.toFixed(1) : "--"}
+              </span>
+              <span>
+                {analysis ? (
+                  <span
+                    className={`inline-flex rounded-full border px-2.5 py-1 text-[0.65rem] font-medium uppercase tracking-[0.2em] ${recommendationStyles(
+                      analysis.recommendation,
+                    )}`}
+                  >
+                    {analysis.recommendation}
+                  </span>
+                ) : (
+                  <span className="text-[#d2d8e5]">--</span>
+                )}
+              </span>
+              <span className={analysis ? scoreStyles(momentumScore) : "text-[#d2d8e5]"}>
+                {momentumDirection}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="mt-4 text-sm leading-7 text-[#8fa1be]">
+        Universe note: this board uses a curated top-20 S&amp;P 500 large-cap basket for a fast live snapshot of where the strongest institutional-looking setups are clustering right now.
+      </p>
+    </motion.section>
   );
 }
 
@@ -658,6 +1015,46 @@ function EarningsCatalystCard({ analysis }: { analysis: QuantLensAnalysis }) {
   );
 }
 
+function TradeTimingCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  const { tradeTiming } = analysis;
+  const tone =
+    tradeTiming.score >= 7.5
+      ? "text-emerald-200"
+      : tradeTiming.score >= 5.5
+        ? "text-amber-100"
+        : "text-rose-200";
+  const verdictTone =
+    tradeTiming.verdict === "Optimal Now"
+      ? "text-emerald-200"
+      : tradeTiming.verdict === "Good But Stretched" || tradeTiming.verdict === "Wait For Pullback"
+        ? "text-amber-100"
+        : "text-rose-200";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Trade Timing</p>
+          <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
+            {tradeTiming.score.toFixed(1)}/10
+          </h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Read</p>
+          <p className={`mt-1 text-lg font-semibold ${verdictTone}`}>{tradeTiming.verdict}</p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{tradeTiming.explanation}</p>
+      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{tradeTiming.summary}</p>
+    </motion.section>
+  );
+}
+
 function InsiderActivityCard({ analysis }: { analysis: QuantLensAnalysis }) {
   if (!analysis.insiderActivity) {
     return (
@@ -983,6 +1380,7 @@ function AnalysisSidebar({
   return (
     <div className="grid gap-6">
       <EarningsCatalystCard analysis={analysis} />
+      <TradeTimingCard analysis={analysis} />
       <StressCard analysis={analysis} />
       <ShortSqueezeCard analysis={analysis} />
       <NewsSentimentCard analysis={analysis} />
@@ -1138,12 +1536,170 @@ export function QuantLensApp() {
   const [ticker, setTicker] = useState("NVDA");
   const [leftTicker, setLeftTicker] = useState("NVDA");
   const [rightTicker, setRightTicker] = useState("AMD");
+  const [watchlistInput, setWatchlistInput] = useState("");
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [watchlistEntries, setWatchlistEntries] = useState<WatchlistEntry[]>([]);
+  const [watchlistError, setWatchlistError] = useState<string | null>(null);
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
   const [state, setState] = useState<ApiState>({
     analysis: null,
     comparison: null,
     error: null,
   });
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const stored = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
+
+      if (!stored) {
+        return;
+      }
+
+      const parsed = JSON.parse(stored) as unknown;
+
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+
+      const sanitized = parsed
+        .map((value) => (typeof value === "string" ? value.trim().toUpperCase() : ""))
+        .filter(Boolean)
+        .slice(0, WATCHLIST_LIMIT);
+
+      setWatchlist(sanitized);
+    } catch {
+      window.localStorage.removeItem(WATCHLIST_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist));
+  }, [watchlist]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (watchlist.length === 0) {
+      setWatchlistEntries([]);
+      return;
+    }
+
+    setWatchlistEntries((current) =>
+      watchlist.map((tickerSymbol) => current.find((entry) => entry.ticker === tickerSymbol) ?? {
+        ticker: tickerSymbol,
+        analysis: null,
+        error: null,
+      }),
+    );
+
+    void Promise.all(
+      watchlist.map(async (tickerSymbol) => {
+        try {
+          const response = await fetch(`/api/analyze?ticker=${encodeURIComponent(tickerSymbol)}`);
+          const payload = (await response.json()) as {
+            analysis?: QuantLensAnalysis;
+            error?: string;
+          };
+
+          if (!response.ok || !payload.analysis) {
+            throw new Error(payload.error ?? "Unable to refresh ticker.");
+          }
+
+          return {
+            ticker: tickerSymbol,
+            analysis: payload.analysis,
+            error: null,
+          } satisfies WatchlistEntry;
+        } catch (error) {
+          return {
+            ticker: tickerSymbol,
+            analysis: null,
+            error: error instanceof Error ? error.message : "Unable to refresh ticker.",
+          } satisfies WatchlistEntry;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+
+      setWatchlistEntries(entries);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [watchlist]);
+
+  const refreshLeaderboard = useCallback(async () => {
+    setIsLeaderboardLoading(true);
+    setLeaderboardError(null);
+    setLeaderboardEntries((current) =>
+      TOP_SP500_TICKERS.map(
+        (tickerSymbol) =>
+          current.find((entry) => entry.ticker === tickerSymbol) ?? {
+            ticker: tickerSymbol,
+            analysis: null,
+            error: null,
+          },
+      ),
+    );
+
+    try {
+      const nextEntries = await Promise.all(
+        TOP_SP500_TICKERS.map(async (tickerSymbol) => {
+          try {
+            const response = await fetch(`/api/analyze?ticker=${encodeURIComponent(tickerSymbol)}`);
+            const payload = (await response.json()) as {
+              analysis?: QuantLensAnalysis;
+              error?: string;
+            };
+
+            if (!response.ok || !payload.analysis) {
+              throw new Error(payload.error ?? "Unable to analyze ticker.");
+            }
+
+            return {
+              ticker: tickerSymbol,
+              analysis: payload.analysis,
+              error: null,
+            } satisfies LeaderboardEntry;
+          } catch (error) {
+            return {
+              ticker: tickerSymbol,
+              analysis: null,
+              error: error instanceof Error ? error.message : "Unable to analyze ticker.",
+            } satisfies LeaderboardEntry;
+          }
+        }),
+      );
+
+      setLeaderboardEntries(nextEntries);
+    } catch (error) {
+      setLeaderboardError(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh the market leaderboard.",
+      );
+    } finally {
+      setIsLeaderboardLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshLeaderboard();
+  }, [refreshLeaderboard]);
 
   const runSingleAnalysis = useCallback(async (nextTicker: string) => {
     startTransition(async () => {
@@ -1226,6 +1782,40 @@ export function QuantLensApp() {
   const analysis = state.analysis;
   const comparison = state.comparison;
 
+  function addToWatchlist(rawTicker: string) {
+    const normalized = rawTicker.trim().toUpperCase();
+
+    if (!normalized) {
+      setWatchlistError("Enter a ticker before adding it to the watchlist.");
+      return;
+    }
+
+    if (watchlist.includes(normalized)) {
+      setWatchlistError(`${normalized} is already on the watchlist.`);
+      return;
+    }
+
+    if (watchlist.length >= WATCHLIST_LIMIT) {
+      setWatchlistError("Watchlist limit reached. Remove a ticker before adding another one.");
+      return;
+    }
+
+    setWatchlist((current) => [...current, normalized]);
+    setWatchlistInput("");
+    setWatchlistError(null);
+  }
+
+  function removeFromWatchlist(tickerToRemove: string) {
+    setWatchlist((current) => current.filter((currentTicker) => currentTicker !== tickerToRemove));
+    setWatchlistError(null);
+  }
+
+  function openFromWatchlist(nextTicker: string) {
+    setMode("single");
+    setTicker(nextTicker);
+    void runSingleAnalysis(nextTicker);
+  }
+
   function getCurrentView(nextAnalysis: QuantLensAnalysis): AnalysisView {
     return stressMode
       ? nextAnalysis.stressTest.stressed
@@ -1306,25 +1896,36 @@ export function QuantLensApp() {
             </div>
 
             {mode === "single" ? (
-              <form onSubmit={handleSingleSubmit} className="flex flex-col gap-3 sm:flex-row">
-                <label className="sr-only" htmlFor="ticker">
-                  Stock ticker
-                </label>
-                <input
-                  id="ticker"
-                  value={ticker}
-                  onChange={(event) => setTicker(event.target.value.toUpperCase())}
-                  placeholder="Enter ticker, e.g. AAPL"
-                  className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
-                />
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="rounded-2xl bg-[linear-gradient(135deg,#b6f09c_0%,#6ed3cf_40%,#7393ff_100%)] px-6 py-4 text-sm font-semibold tracking-[0.18em] text-slate-950 uppercase transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
-                >
-                  {isPending ? "Analyzing" : "Run Analysis"}
-                </button>
-              </form>
+              <div className="flex flex-col gap-3">
+                <form onSubmit={handleSingleSubmit} className="flex flex-col gap-3 sm:flex-row">
+                  <label className="sr-only" htmlFor="ticker">
+                    Stock ticker
+                  </label>
+                  <input
+                    id="ticker"
+                    value={ticker}
+                    onChange={(event) => setTicker(event.target.value.toUpperCase())}
+                    placeholder="Enter ticker, e.g. AAPL"
+                    className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-cyan-300/40 focus:bg-white/[0.06]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="rounded-2xl bg-[linear-gradient(135deg,#b6f09c_0%,#6ed3cf_40%,#7393ff_100%)] px-6 py-4 text-sm font-semibold tracking-[0.18em] text-slate-950 uppercase transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {isPending ? "Analyzing" : "Run Analysis"}
+                  </button>
+                </form>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => addToWatchlist(ticker)}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.24em] text-[#9aa7bf] transition hover:border-cyan-300/30 hover:text-cyan-100"
+                  >
+                    Save To Watchlist
+                  </button>
+                </div>
+              </div>
             ) : (
               <form onSubmit={handleCompareSubmit} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                 <label className="sr-only" htmlFor="leftTicker">
@@ -1418,6 +2019,27 @@ export function QuantLensApp() {
             {state.error}
           </div>
         ) : null}
+
+        <WatchlistDashboard
+          entries={watchlistEntries}
+          watchlistInput={watchlistInput}
+          watchlistError={watchlistError}
+          onWatchlistInputChange={setWatchlistInput}
+          onAddTicker={addToWatchlist}
+          onOpenTicker={openFromWatchlist}
+          onRemoveTicker={removeFromWatchlist}
+          remainingSlots={WATCHLIST_LIMIT - watchlist.length}
+        />
+
+        <MarketLeaderboard
+          entries={leaderboardEntries}
+          isLoading={isLeaderboardLoading}
+          error={leaderboardError}
+          onOpenTicker={openFromWatchlist}
+          onRefresh={() => {
+            void refreshLeaderboard();
+          }}
+        />
 
         {!analysis ? (
           <EmptyState />

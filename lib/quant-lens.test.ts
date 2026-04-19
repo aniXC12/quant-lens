@@ -242,5 +242,50 @@ describe("analyzeQuantLensData", () => {
     expect(analysis.earningsCatalyst?.riskLevel).toBe("High");
     expect(analysis.earningsCatalyst?.summary.toLowerCase()).toContain("next week");
     expect(analysis.earningsCatalyst?.explanation.toLowerCase()).toContain("waiting");
+    expect(analysis.tradeTiming.verdict).toBe("Wait For Earnings");
+    expect(analysis.tradeTiming.score).toBeLessThan(7);
+  });
+
+  it("produces a trade timing read even when there is no near-term event risk", () => {
+    const prices = [
+      ...Array.from({ length: 110 }, (_, index) => 70 + index * 0.42),
+      115,
+      114.5,
+      115.8,
+      116.2,
+      116.6,
+      117.1,
+      117.7,
+      118.1,
+      118.4,
+      118.9,
+      119.3,
+      119.7,
+      120.1,
+      120.6,
+      121,
+      121.4,
+      121.9,
+      122.2,
+      122.7,
+      123.1,
+      123.6,
+      124,
+      124.4,
+      124.9,
+      125.3,
+      125.7,
+      126.1,
+      126.5,
+      127,
+    ];
+
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_050_000));
+
+    expect(analysis.recommendation).toMatch(/Buy|Hold/);
+    expect(analysis.tradeTiming.score).toBeGreaterThanOrEqual(1);
+    expect(analysis.tradeTiming.score).toBeLessThanOrEqual(10);
+    expect(analysis.tradeTiming.verdict).not.toBe("Wait For Earnings");
+    expect(analysis.tradeTiming.explanation.length).toBeGreaterThan(40);
   });
 });
