@@ -19,6 +19,18 @@ const starterPairs = [
   ["JPM", "GS"],
 ];
 
+type AnalysisView = {
+  convictionScore: number;
+  recommendation: QuantLensAnalysis["recommendation"];
+  sharpeEstimate: number;
+  momentum: QuantLensAnalysis["momentum"];
+  meanReversion: QuantLensAnalysis["meanReversion"];
+  volatilityAdjusted: QuantLensAnalysis["volatilityAdjusted"];
+  risk: string;
+  thesis: string;
+  diagnostics: QuantLensAnalysis["diagnostics"];
+};
+
 function formatCurrency(value: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -36,6 +48,24 @@ function formatCompactNumber(value: number | null) {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+function formatEventDate(value: string | null) {
+  if (!value) {
+    return "N/A";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 }
 
 function scoreStyles(score: number) {
@@ -281,7 +311,7 @@ function ScoreBadge({ recommendation }: { recommendation: QuantLensAnalysis["rec
   );
 }
 
-function SignalCard({ signal }: { signal: QuantLensAnalysis["momentum"] }) {
+function SignalCard({ signal }: { signal: AnalysisView["momentum"] }) {
   return (
     <motion.article
       initial={{ opacity: 0, y: 18 }}
@@ -306,7 +336,15 @@ function SignalCard({ signal }: { signal: QuantLensAnalysis["momentum"] }) {
   );
 }
 
-function AnalysisHero({ analysis }: { analysis: QuantLensAnalysis }) {
+function AnalysisHero({
+  analysis,
+  current,
+  stressMode,
+}: {
+  analysis: QuantLensAnalysis;
+  current: AnalysisView;
+  stressMode: boolean;
+}) {
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
@@ -322,7 +360,12 @@ function AnalysisHero({ analysis }: { analysis: QuantLensAnalysis }) {
           <div className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#9aa7bf]">
             {analysis.symbol}
           </div>
-          <ScoreBadge recommendation={analysis.recommendation} />
+          <ScoreBadge recommendation={current.recommendation} />
+          {stressMode ? (
+            <span className="inline-flex rounded-full border border-rose-300/25 bg-rose-300/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-rose-100">
+              Stress Mode
+            </span>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
@@ -349,14 +392,14 @@ function AnalysisHero({ analysis }: { analysis: QuantLensAnalysis }) {
           <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
             <p className="micro-label text-[#7d8597]">Conviction</p>
             <p className="mt-2 text-3xl font-semibold text-white">
-              {analysis.convictionScore.toFixed(1)}
+              {current.convictionScore.toFixed(1)}
               <span className="text-lg text-[#8f9bb2]">/10</span>
             </p>
           </div>
           <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
             <p className="micro-label text-[#7d8597]">Sharpe Est.</p>
             <p className="mt-2 text-3xl font-semibold text-white">
-              {analysis.sharpeEstimate.toFixed(2)}
+              {current.sharpeEstimate.toFixed(2)}
             </p>
           </div>
           <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
@@ -397,32 +440,68 @@ function AnalysisHero({ analysis }: { analysis: QuantLensAnalysis }) {
   );
 }
 
-function SignalComparisonTable({ comparison }: { comparison: QuantLensComparison }) {
+function SignalComparisonTable({
+  comparison,
+  stressMode,
+}: {
+  comparison: QuantLensComparison;
+  stressMode: boolean;
+}) {
+  const leftMomentum = stressMode
+    ? comparison.left.stressTest.stressed.momentum.score
+    : comparison.left.momentum.score;
+  const rightMomentum = stressMode
+    ? comparison.right.stressTest.stressed.momentum.score
+    : comparison.right.momentum.score;
+  const leftMeanReversion = stressMode
+    ? comparison.left.stressTest.stressed.meanReversion.score
+    : comparison.left.meanReversion.score;
+  const rightMeanReversion = stressMode
+    ? comparison.right.stressTest.stressed.meanReversion.score
+    : comparison.right.meanReversion.score;
+  const leftVolAdjusted = stressMode
+    ? comparison.left.stressTest.stressed.volatilityAdjusted.score
+    : comparison.left.volatilityAdjusted.score;
+  const rightVolAdjusted = stressMode
+    ? comparison.right.stressTest.stressed.volatilityAdjusted.score
+    : comparison.right.volatilityAdjusted.score;
+  const leftSharpe = stressMode
+    ? comparison.left.stressTest.stressed.sharpeEstimate
+    : comparison.left.sharpeEstimate;
+  const rightSharpe = stressMode
+    ? comparison.right.stressTest.stressed.sharpeEstimate
+    : comparison.right.sharpeEstimate;
+  const leftConviction = stressMode
+    ? comparison.left.stressTest.stressed.convictionScore
+    : comparison.left.convictionScore;
+  const rightConviction = stressMode
+    ? comparison.right.stressTest.stressed.convictionScore
+    : comparison.right.convictionScore;
   const rows = [
     {
       label: "Momentum",
-      left: comparison.left.momentum.score,
-      right: comparison.right.momentum.score,
+      left: leftMomentum,
+      right: rightMomentum,
     },
     {
       label: "Mean Reversion",
-      left: comparison.left.meanReversion.score,
-      right: comparison.right.meanReversion.score,
+      left: leftMeanReversion,
+      right: rightMeanReversion,
     },
     {
       label: "Volatility-Adjusted",
-      left: comparison.left.volatilityAdjusted.score,
-      right: comparison.right.volatilityAdjusted.score,
+      left: leftVolAdjusted,
+      right: rightVolAdjusted,
     },
     {
       label: "Sharpe Est.",
-      left: comparison.left.sharpeEstimate,
-      right: comparison.right.sharpeEstimate,
+      left: leftSharpe,
+      right: rightSharpe,
     },
     {
       label: "Conviction",
-      left: comparison.left.convictionScore,
-      right: comparison.right.convictionScore,
+      left: leftConviction,
+      right: rightConviction,
     },
   ];
 
@@ -431,11 +510,16 @@ function SignalComparisonTable({ comparison }: { comparison: QuantLensComparison
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="micro-label text-[#7d8597]">Head To Head</p>
-          <h3 className="mt-2 text-2xl font-semibold text-white">Signal comparison</h3>
+          <h3 className="mt-2 text-2xl font-semibold text-white">
+            {stressMode ? "Stress signal comparison" : "Signal comparison"}
+          </h3>
         </div>
         <div className="text-right text-sm text-[#a6b3ca]">
           <p>{comparison.left.symbol} vs {comparison.right.symbol}</p>
-          <p>{comparison.winner.symbol} leads by {comparison.convictionGap.toFixed(1)} conviction points</p>
+          <p>
+            {(stressMode ? comparison.stressTest.winnerSymbol : comparison.winner.symbol)} leads by{" "}
+            {(stressMode ? comparison.stressTest.convictionGap : comparison.convictionGap).toFixed(1)} conviction points
+          </p>
         </div>
       </div>
 
@@ -471,9 +555,439 @@ function SignalComparisonTable({ comparison }: { comparison: QuantLensComparison
   );
 }
 
-function AnalysisSidebar({ analysis }: { analysis: QuantLensAnalysis }) {
+function StressCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="rounded-[32px] border border-rose-300/12 bg-[linear-gradient(180deg,rgba(251,113,133,0.06),rgba(255,255,255,0.03))] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Market Stress Test</p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">20% drawdown scenario</h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Conviction Delta</p>
+          <p className={`mt-1 text-xl font-semibold ${scoreStyles(analysis.stressTest.convictionDelta)}`}>
+            {analysis.stressTest.convictionDelta >= 0 ? "+" : ""}
+            {analysis.stressTest.convictionDelta.toFixed(1)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{analysis.stressTest.explanation}</p>
+      <p className="mt-4 text-sm leading-8 text-[#bfc8d9]">{analysis.stressTest.thesisShift}</p>
+      <div className="mt-5 rounded-2xl border border-white/8 bg-black/10 p-4 text-sm text-[#d8deea]">
+        {analysis.stressTest.holdsUp
+          ? "The conviction score mostly holds up under stress. This thesis looks more robust than fragile."
+          : "The conviction score does not hold up especially well under stress. This thesis is more sensitive to regime change than the live tape suggests."}
+      </div>
+    </motion.section>
+  );
+}
+
+function EarningsCatalystCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  if (!analysis.earningsCatalyst) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      >
+        <p className="micro-label text-[#7d8597]">Earnings Catalyst</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+          An upcoming earnings date was not available for this ticker, so there is no clean event
+          risk read to layer on top of the quant setup.
+        </p>
+      </motion.section>
+    );
+  }
+
+  const { earningsCatalyst } = analysis;
+  const tone =
+    earningsCatalyst.riskLevel === "High"
+      ? "text-rose-200"
+      : earningsCatalyst.riskLevel === "Moderate"
+        ? "text-amber-100"
+        : "text-emerald-200";
+  const shell =
+    earningsCatalyst.hasUpcomingEarnings
+      ? "rounded-[32px] border border-amber-300/16 bg-[linear-gradient(180deg,rgba(251,191,36,0.08),rgba(255,255,255,0.03))] p-6"
+      : "rounded-[32px] border border-white/8 bg-white/[0.03] p-6";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className={shell}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Earnings Catalyst</p>
+          <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
+            {earningsCatalyst.hasUpcomingEarnings ? "Event In View" : "No Near-Term Event"}
+          </h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Risk</p>
+          <p className={`mt-1 text-lg font-semibold ${tone}`}>{earningsCatalyst.riskLevel}</p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{earningsCatalyst.explanation}</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Next Earnings</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {formatEventDate(earningsCatalyst.nextEarningsDate)}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Days Out</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {earningsCatalyst.daysUntilEarnings == null
+              ? "N/A"
+              : `${earningsCatalyst.daysUntilEarnings}d`}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{earningsCatalyst.summary}</p>
+    </motion.section>
+  );
+}
+
+function InsiderActivityCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  if (!analysis.insiderActivity) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      >
+        <p className="micro-label text-[#7d8597]">Insider Activity</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+          Recent insider transaction data was not available in the last 90 days, so the thesis is
+          leaning entirely on price action and market data rather than executive behavior.
+        </p>
+      </motion.section>
+    );
+  }
+
+  const { insiderActivity } = analysis;
+  const sentimentStyle =
+    insiderActivity.sentiment === "Buying"
+      ? "text-emerald-200"
+      : insiderActivity.sentiment === "Selling"
+        ? "text-rose-200"
+        : insiderActivity.sentiment === "Mixed"
+          ? "text-amber-100"
+          : "text-[#d2d8e5]";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Insider Activity</p>
+          <h3 className={`mt-2 text-2xl font-semibold ${sentimentStyle}`}>
+            {insiderActivity.sentiment}
+          </h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Net Shares</p>
+          <p className={`mt-1 text-lg font-semibold ${scoreStyles(insiderActivity.netShares)}`}>
+            {insiderActivity.netShares >= 0 ? "+" : ""}
+            {new Intl.NumberFormat("en-US", {
+              notation: "compact",
+              maximumFractionDigits: 1,
+            }).format(insiderActivity.netShares)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{insiderActivity.explanation}</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Transactions</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {insiderActivity.buyCount} buys / {insiderActivity.sellCount} sells
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Latest Filing</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {insiderActivity.latestDate ?? "N/A"}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{insiderActivity.summary}</p>
+      {insiderActivity.transactions.length > 0 ? (
+        <div className="mt-5 grid gap-3">
+          {insiderActivity.transactions.slice(0, 3).map((transaction) => (
+            <div
+              key={`${transaction.date}-${transaction.filerName}-${transaction.transactionType}`}
+              className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <span className="font-medium text-white">{transaction.filerName}</span>
+                <span className="text-[#96a4bd]">{transaction.date}</span>
+              </div>
+              <p className="mt-1 text-[#cfd6e4]">
+                {transaction.relation} | {transaction.transactionType}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </motion.section>
+  );
+}
+
+function ShortSqueezeCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  if (!analysis.shortSqueeze) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      >
+        <p className="micro-label text-[#7d8597]">Short Squeeze Risk</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+          Short interest data was not available for this ticker, so the squeeze read is inconclusive.
+        </p>
+      </motion.section>
+    );
+  }
+
+  const { shortSqueeze } = analysis;
+  const tone =
+    shortSqueeze.sentiment === "High"
+      ? "text-rose-200"
+      : shortSqueeze.sentiment === "Moderate"
+        ? "text-amber-100"
+        : "text-[#d2d8e5]";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Short Squeeze Risk</p>
+          <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
+            {shortSqueeze.probabilityScore.toFixed(0)}/100
+          </h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Read</p>
+          <p className={`mt-1 text-lg font-semibold ${tone}`}>{shortSqueeze.sentiment}</p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{shortSqueeze.explanation}</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Short % Float</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {shortSqueeze.shortPercentOfFloat == null
+              ? "N/A"
+              : `${(shortSqueeze.shortPercentOfFloat * 100).toFixed(1)}%`}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Days To Cover</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {shortSqueeze.daysToCover == null ? "N/A" : shortSqueeze.daysToCover.toFixed(1)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{shortSqueeze.summary}</p>
+    </motion.section>
+  );
+}
+
+function NewsSentimentCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  if (!analysis.newsSentiment) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      >
+        <p className="micro-label text-[#7d8597]">News Sentiment</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+          Recent headlines were not available for this ticker, so the thesis is leaning on price
+          action rather than on a fresh news read.
+        </p>
+      </motion.section>
+    );
+  }
+
+  const { newsSentiment } = analysis;
+  const tone =
+    newsSentiment.sentiment === "Positive"
+      ? "text-emerald-200"
+      : newsSentiment.sentiment === "Negative"
+        ? "text-rose-200"
+        : "text-amber-100";
+  const alignmentTone =
+    newsSentiment.alignment === "Aligned"
+      ? "text-emerald-200"
+      : newsSentiment.alignment === "Conflicting"
+        ? "text-rose-200"
+        : "text-amber-100";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">News Sentiment</p>
+          <h3 className={`mt-2 text-2xl font-semibold ${tone}`}>
+            {newsSentiment.score.toFixed(0)}/100
+          </h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Alignment</p>
+          <p className={`mt-1 text-lg font-semibold ${alignmentTone}`}>
+            {newsSentiment.alignment}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{newsSentiment.explanation}</p>
+      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{newsSentiment.summary}</p>
+      <div className="mt-5 grid gap-3">
+        {newsSentiment.headlines.slice(0, 3).map((headline) => (
+          <div
+            key={headline.link}
+            className="rounded-2xl border border-white/8 bg-black/10 px-4 py-3 text-sm"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <span className={`font-medium ${scoreStyles(headline.sentimentScore)}`}>
+                {headline.sentimentScore > 0
+                  ? "Positive"
+                  : headline.sentimentScore < 0
+                    ? "Negative"
+                    : "Neutral"}
+              </span>
+              <span className="text-[#96a4bd]">
+                {headline.publishedAt ? new Date(headline.publishedAt).toLocaleDateString() : ""}
+              </span>
+            </div>
+            <p className="mt-2 text-[#d7deea]">{headline.title}</p>
+          </div>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function InstitutionalOwnershipCard({ analysis }: { analysis: QuantLensAnalysis }) {
+  if (!analysis.institutionalOwnership) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+      >
+        <p className="micro-label text-[#7d8597]">Institutional Ownership</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+          Institutional ownership history was not available for this ticker, so the thesis is not
+          using a holder-rotation signal here.
+        </p>
+      </motion.section>
+    );
+  }
+
+  const { institutionalOwnership } = analysis;
+  const trendTone =
+    institutionalOwnership.trend === "Rising"
+      ? "text-emerald-200"
+      : institutionalOwnership.trend === "Falling"
+        ? "text-rose-200"
+        : "text-amber-100";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="micro-label text-[#7d8597]">Institutional Ownership</p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">
+            {institutionalOwnership.currentPercentHeld == null
+              ? "N/A"
+              : `${(institutionalOwnership.currentPercentHeld * 100).toFixed(1)}%`}
+          </h3>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3 text-right">
+          <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[#7d8597]">Trend</p>
+          <p className={`mt-1 text-lg font-semibold ${trendTone}`}>
+            {institutionalOwnership.trend}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">
+        {institutionalOwnership.explanation}
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Last Quarter</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {institutionalOwnership.previousQuarterPercentHeld == null
+              ? "N/A"
+              : `${(institutionalOwnership.previousQuarterPercentHeld * 100).toFixed(1)}%`}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-4">
+          <p className="micro-label text-[#7d8597]">Two Quarters Ago</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {institutionalOwnership.twoQuartersAgoPercentHeld == null
+              ? "N/A"
+              : `${(institutionalOwnership.twoQuartersAgoPercentHeld * 100).toFixed(1)}%`}
+          </p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-7 text-[#b8c3d8]">{institutionalOwnership.summary}</p>
+    </motion.section>
+  );
+}
+
+function AnalysisSidebar({
+  analysis,
+  current,
+  stressMode,
+}: {
+  analysis: QuantLensAnalysis;
+  current: AnalysisView;
+  stressMode: boolean;
+}) {
   return (
     <div className="grid gap-6">
+      <EarningsCatalystCard analysis={analysis} />
+      <StressCard analysis={analysis} />
+      <ShortSqueezeCard analysis={analysis} />
+      <NewsSentimentCard analysis={analysis} />
+      <InstitutionalOwnershipCard analysis={analysis} />
+      <InsiderActivityCard analysis={analysis} />
       {analysis.sectorContext ? (
         <motion.section
           initial={{ opacity: 0, y: 18 }}
@@ -527,7 +1041,7 @@ function AnalysisSidebar({ analysis }: { analysis: QuantLensAnalysis }) {
         className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
       >
         <p className="micro-label text-[#7d8597]">Institutional Thesis</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{analysis.thesis}</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{current.thesis}</p>
       </motion.section>
 
       <motion.section
@@ -537,7 +1051,7 @@ function AnalysisSidebar({ analysis }: { analysis: QuantLensAnalysis }) {
         className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6"
       >
         <p className="micro-label text-[#7d8597]">Biggest Risk Right Now</p>
-        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{analysis.risk}</p>
+        <p className="mt-4 text-sm leading-8 text-[#d2d8e5]">{current.risk}</p>
       </motion.section>
 
       <motion.section
@@ -550,15 +1064,16 @@ function AnalysisSidebar({ analysis }: { analysis: QuantLensAnalysis }) {
         <div className="mt-4 grid gap-3">
           {[
             ["Sector", analysis.sector ?? "N/A"],
-            ["Momentum score", analysis.diagnostics.momentumScore.toFixed(2)],
-            ["Mean reversion score", analysis.diagnostics.meanReversionScore.toFixed(2)],
+            ["Mode", stressMode ? "Stress" : "Live"],
+            ["Momentum score", current.diagnostics.momentumScore.toFixed(2)],
+            ["Mean reversion score", current.diagnostics.meanReversionScore.toFixed(2)],
             [
               "Volatility-adjusted score",
-              analysis.diagnostics.volatilityAdjustedScore.toFixed(2),
+              current.diagnostics.volatilityAdjustedScore.toFixed(2),
             ],
-            ["Realized volatility", `${(analysis.diagnostics.realizedVolatility * 100).toFixed(1)}%`],
-            ["Price vs 20D average", `${(analysis.diagnostics.priceVs20DayAverage * 100).toFixed(1)}%`],
-            ["Volume ratio", `${analysis.diagnostics.volumeRatio.toFixed(2)}x`],
+            ["Realized volatility", `${(current.diagnostics.realizedVolatility * 100).toFixed(1)}%`],
+            ["Price vs 20D average", `${(current.diagnostics.priceVs20DayAverage * 100).toFixed(1)}%`],
+            ["Volume ratio", `${current.diagnostics.volumeRatio.toFixed(2)}x`],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -619,6 +1134,7 @@ function EmptyState() {
 
 export function QuantLensApp() {
   const [mode, setMode] = useState<Mode>("single");
+  const [stressMode, setStressMode] = useState(false);
   const [ticker, setTicker] = useState("NVDA");
   const [leftTicker, setLeftTicker] = useState("NVDA");
   const [rightTicker, setRightTicker] = useState("AMD");
@@ -710,6 +1226,22 @@ export function QuantLensApp() {
   const analysis = state.analysis;
   const comparison = state.comparison;
 
+  function getCurrentView(nextAnalysis: QuantLensAnalysis): AnalysisView {
+    return stressMode
+      ? nextAnalysis.stressTest.stressed
+      : {
+          convictionScore: nextAnalysis.convictionScore,
+          recommendation: nextAnalysis.recommendation,
+          sharpeEstimate: nextAnalysis.sharpeEstimate,
+          momentum: nextAnalysis.momentum,
+          meanReversion: nextAnalysis.meanReversion,
+          volatilityAdjusted: nextAnalysis.volatilityAdjusted,
+          risk: nextAnalysis.risk,
+          thesis: nextAnalysis.thesis,
+          diagnostics: nextAnalysis.diagnostics,
+        };
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-6 text-white sm:px-6 lg:px-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(72,163,255,0.18),transparent_30%),radial-gradient(circle_at_85%_15%,rgba(0,255,163,0.08),transparent_24%),linear-gradient(180deg,#07111f_0%,#050914_60%,#03070d_100%)]" />
@@ -759,7 +1291,18 @@ export function QuantLensApp() {
                 >
                   {label}
                 </button>
-              ))}
+                ))}
+              <button
+                type="button"
+                onClick={() => setStressMode((current) => !current)}
+                className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.24em] transition ${
+                  stressMode
+                    ? "border-rose-300/40 bg-rose-300/10 text-rose-100"
+                    : "border-white/10 bg-white/[0.04] text-[#99a6bf]"
+                }`}
+              >
+                {stressMode ? "Stress On" : "Stress Off"}
+              </button>
             </div>
 
             {mode === "single" ? (
@@ -890,63 +1433,89 @@ export function QuantLensApp() {
                 <div>
                   <p className="micro-label text-[#9ec8c2]">Stronger Quant Case</p>
                   <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
-                    {comparison.winner.companyName} ({comparison.winner.symbol})
+                    {stressMode
+                      ? `${comparison.stressTest.winnerSymbol} Under Stress`
+                      : `${comparison.winner.companyName} (${comparison.winner.symbol})`}
                   </h2>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right">
                   <p className="micro-label text-[#8aa2c5]">Advantage</p>
                   <p className="mt-2 text-3xl font-semibold text-white">
-                    {comparison.convictionGap.toFixed(1)}
+                    {(stressMode ? comparison.stressTest.convictionGap : comparison.convictionGap).toFixed(1)}
                     <span className="text-lg text-[#8f9bb2]"> pts</span>
                   </p>
                 </div>
               </div>
               <p className="mt-4 max-w-5xl text-sm leading-8 text-[#d7deea]">
-                {comparison.explanation}
+                {stressMode ? comparison.stressTest.explanation : comparison.explanation}
               </p>
             </motion.section>
 
             <div className="grid gap-6 xl:grid-cols-2">
-              <AnalysisHero analysis={comparison.left} />
-              <AnalysisHero analysis={comparison.right} />
+              <AnalysisHero
+                analysis={comparison.left}
+                current={getCurrentView(comparison.left)}
+                stressMode={stressMode}
+              />
+              <AnalysisHero
+                analysis={comparison.right}
+                current={getCurrentView(comparison.right)}
+                stressMode={stressMode}
+              />
             </div>
 
-            <SignalComparisonTable comparison={comparison} />
+            <SignalComparisonTable comparison={comparison} stressMode={stressMode} />
 
             <div className="grid gap-6 xl:grid-cols-2">
               <div className="grid gap-6">
                 <div className="grid gap-6 xl:grid-cols-3">
-                  <SignalCard signal={comparison.left.momentum} />
-                  <SignalCard signal={comparison.left.meanReversion} />
-                  <SignalCard signal={comparison.left.volatilityAdjusted} />
+                  <SignalCard signal={getCurrentView(comparison.left).momentum} />
+                  <SignalCard signal={getCurrentView(comparison.left).meanReversion} />
+                  <SignalCard signal={getCurrentView(comparison.left).volatilityAdjusted} />
                 </div>
                 <SignalHistoryChart analysis={comparison.left} />
-                <AnalysisSidebar analysis={comparison.left} />
+                <AnalysisSidebar
+                  analysis={comparison.left}
+                  current={getCurrentView(comparison.left)}
+                  stressMode={stressMode}
+                />
               </div>
 
               <div className="grid gap-6">
                 <div className="grid gap-6 xl:grid-cols-3">
-                  <SignalCard signal={comparison.right.momentum} />
-                  <SignalCard signal={comparison.right.meanReversion} />
-                  <SignalCard signal={comparison.right.volatilityAdjusted} />
+                  <SignalCard signal={getCurrentView(comparison.right).momentum} />
+                  <SignalCard signal={getCurrentView(comparison.right).meanReversion} />
+                  <SignalCard signal={getCurrentView(comparison.right).volatilityAdjusted} />
                 </div>
                 <SignalHistoryChart analysis={comparison.right} />
-                <AnalysisSidebar analysis={comparison.right} />
+                <AnalysisSidebar
+                  analysis={comparison.right}
+                  current={getCurrentView(comparison.right)}
+                  stressMode={stressMode}
+                />
               </div>
             </div>
           </section>
         ) : (
           <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="grid gap-6">
-              <AnalysisHero analysis={analysis} />
+              <AnalysisHero
+                analysis={analysis}
+                current={getCurrentView(analysis)}
+                stressMode={stressMode}
+              />
               <SignalHistoryChart analysis={analysis} />
               <div className="grid gap-6 xl:grid-cols-3">
-                <SignalCard signal={analysis.momentum} />
-                <SignalCard signal={analysis.meanReversion} />
-                <SignalCard signal={analysis.volatilityAdjusted} />
+                <SignalCard signal={getCurrentView(analysis).momentum} />
+                <SignalCard signal={getCurrentView(analysis).meanReversion} />
+                <SignalCard signal={getCurrentView(analysis).volatilityAdjusted} />
               </div>
             </div>
-            <AnalysisSidebar analysis={analysis} />
+            <AnalysisSidebar
+              analysis={analysis}
+              current={getCurrentView(analysis)}
+              stressMode={stressMode}
+            />
           </section>
         )}
       </section>

@@ -4,6 +4,8 @@ import {
   analyzeQuantLensData,
   attachSectorContext,
   compareQuantLensAnalyses,
+  type InstitutionalOwnershipData,
+  type NewsHeadline,
   type PricePoint,
   type QuoteFundamentals,
 } from "@/lib/quant-lens";
@@ -28,6 +30,10 @@ const quote: QuoteFundamentals = {
   trailingPe: 20,
   fiftyTwoWeekLow: 70,
   fiftyTwoWeekHigh: 130,
+  shortPercentOfFloat: 0.14,
+  daysToCover: 6.2,
+  nextEarningsDate: null,
+  daysUntilEarnings: null,
 };
 
 describe("analyzeQuantLensData", () => {
@@ -134,5 +140,107 @@ describe("analyzeQuantLensData", () => {
     expect(analysis.signalHistory.length).toBeGreaterThan(20);
     expect(analysis.signalHistory.at(-1)?.momentum).toBeTypeOf("number");
     expect(analysis.signalReliability.explanation.length).toBeGreaterThan(20);
+  });
+
+  it("produces a distinct stress scenario with conviction change", () => {
+    const prices = Array.from({ length: 140 }, (_, index) => 60 + index * 0.75);
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_150_000));
+
+    expect(analysis.stressTest.stressed.convictionScore).toBeGreaterThanOrEqual(0);
+    expect(analysis.stressTest.explanation).toContain("20%");
+    expect(analysis.stressTest.stressed.recommendation).toMatch(/Buy|Hold|Sell/);
+  });
+
+  it("summarizes recent insider buying activity", () => {
+    const prices = Array.from({ length: 140 }, (_, index) => 60 + index * 0.65);
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_150_000), [
+      {
+        filerName: "Jane Executive",
+        relation: "CEO",
+        transactionType: "Buy",
+        shares: 25000,
+        value: 2_500_000,
+        date: "2026-03-01",
+      },
+      {
+        filerName: "John Director",
+        relation: "Director",
+        transactionType: "Purchase",
+        shares: 15000,
+        value: 1_450_000,
+        date: "2026-02-20",
+      },
+    ]);
+
+    expect(analysis.insiderActivity?.sentiment).toBe("Buying");
+    expect(analysis.insiderActivity?.buyCount).toBe(2);
+    expect(analysis.insiderActivity?.explanation.toLowerCase()).toContain("executives");
+  });
+
+  it("scores short squeeze probability from short interest and momentum", () => {
+    const prices = Array.from({ length: 140 }, (_, index) => 40 + index * 0.9);
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_250_000));
+
+    expect(analysis.shortSqueeze?.probabilityScore).toBeGreaterThan(0);
+    expect(analysis.shortSqueeze?.sentiment).toMatch(/Low|Moderate|High/);
+    expect(analysis.shortSqueeze?.explanation.toLowerCase()).toContain("short");
+  });
+
+  it("flags conflicting news sentiment against a bullish momentum setup", () => {
+    const prices = Array.from({ length: 140 }, (_, index) => 45 + index * 0.85);
+    const headlines: NewsHeadline[] = [
+      {
+        title: "Test Corp faces lawsuit as analysts warn of weak demand",
+        link: "https://example.com/1",
+        publishedAt: "2026-04-15T12:00:00Z",
+      },
+      {
+        title: "Test Corp stock drops after downgrade and profit warning",
+        link: "https://example.com/2",
+        publishedAt: "2026-04-14T12:00:00Z",
+      },
+    ];
+
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_150_000), [], headlines);
+
+    expect(analysis.newsSentiment?.alignment).toBe("Conflicting");
+    expect(analysis.newsSentiment?.sentiment).toBe("Negative");
+    expect(analysis.newsSentiment?.explanation.toLowerCase()).toContain("risk");
+  });
+
+  it("summarizes rising institutional ownership", () => {
+    const prices = Array.from({ length: 140 }, (_, index) => 55 + index * 0.8);
+    const ownership: InstitutionalOwnershipData = {
+      currentPercentHeld: 0.71,
+      previousQuarterPercentHeld: 0.69,
+      twoQuartersAgoPercentHeld: 0.65,
+      trend: "Rising",
+    };
+
+    const analysis = analyzeQuantLensData(quote, makeHistory(prices, 1_100_000), [], [], ownership);
+
+    expect(analysis.institutionalOwnership?.trend).toBe("Rising");
+    expect(analysis.institutionalOwnership?.summary.toLowerCase()).toContain("trending higher");
+    expect(analysis.institutionalOwnership?.explanation.toLowerCase()).toContain("institutions");
+  });
+
+  it("flags near-term earnings as a catalyst risk to momentum", () => {
+    const prices = Array.from({ length: 140 }, (_, index) => 55 + index * 0.9);
+    const daysUntilEarnings = 5;
+    const nextEarningsDate = new Date(Date.now() + daysUntilEarnings * 86_400_000).toISOString();
+
+    const analysis = analyzeQuantLensData(
+      {
+        ...quote,
+        nextEarningsDate,
+        daysUntilEarnings,
+      },
+      makeHistory(prices, 1_200_000),
+    );
+
+    expect(analysis.earningsCatalyst?.hasUpcomingEarnings).toBe(true);
+    expect(analysis.earningsCatalyst?.riskLevel).toBe("High");
+    expect(analysis.earningsCatalyst?.summary.toLowerCase()).toContain("next week");
+    expect(analysis.earningsCatalyst?.explanation.toLowerCase()).toContain("waiting");
   });
 });
